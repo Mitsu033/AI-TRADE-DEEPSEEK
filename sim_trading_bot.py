@@ -34,7 +34,7 @@ class SimulationTradingBot:
         # 自動取引設定
         self.is_running = False
         self.trading_thread = None
-        self.trading_interval = 600  # 10分ごと
+        self.trading_interval = 1800  # 30分ごと（マルチタイムフレーム戦略に最適）
         self.last_trade_time = None
         self.initial_balance = initial_balance
 
