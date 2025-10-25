@@ -2,6 +2,7 @@
 QWEN3 AI API連携モジュール
 """
 import json
+import os
 from openai import OpenAI
 from datetime import datetime
 from typing import Dict
@@ -10,12 +11,18 @@ from typing import Dict
 class QWEN3API:
     """AI API連携クラス（Qwen3-max対応）"""
 
-    # ここにAPI キーを直接入力してください（OpenRouter経由でQWEN3を使用）
-    QWEN3_API_KEY = "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"
-    
+    # デフォルトのAPIキー（開発環境用）
+    # 本番環境では環境変数 QWEN3_API_KEY を使用してください
+    DEFAULT_API_KEY = "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"
+
     def __init__(self, api_key: str = None):
-        # api_keyが指定されていない場合は、クラス変数を使用
-        self.api_key = api_key if api_key else self.QWEN3_API_KEY
+        # 優先順位: 引数 > 環境変数 > デフォルト
+        if api_key:
+            self.api_key = api_key
+        else:
+            self.api_key = os.environ.get('QWEN3_API_KEY', self.DEFAULT_API_KEY)
+
+        print(f"🔑 API Key: {self.api_key[:20]}... (length: {len(self.api_key)})")
         self.base_url = "https://openrouter.ai/api/v1"
         self.model = "qwen/qwen-2.5-72b-instruct"
 
