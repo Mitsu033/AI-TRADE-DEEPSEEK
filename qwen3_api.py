@@ -17,12 +17,21 @@ class QWEN3API:
 
     def __init__(self, api_key: str = None):
         # 優先順位: 引数 > 環境変数 > デフォルト
+        env_key = os.environ.get('QWEN3_API_KEY')
+
         if api_key:
             self.api_key = api_key
+            key_source = "argument"
+        elif env_key:
+            self.api_key = env_key
+            key_source = "environment variable"
         else:
-            self.api_key = os.environ.get('QWEN3_API_KEY', self.DEFAULT_API_KEY)
+            self.api_key = self.DEFAULT_API_KEY
+            key_source = "default (hardcoded)"
 
-        print(f"🔑 API Key: {self.api_key[:20]}... (length: {len(self.api_key)})")
+        print(f"API Key Source: {key_source}")
+        print(f"API Key: {self.api_key[:20]}...{self.api_key[-10:]} (length: {len(self.api_key)})")
+        print(f"Environment QWEN3_API_KEY exists: {env_key is not None}")
         self.base_url = "https://openrouter.ai/api/v1"
         self.model = "qwen/qwen-2.5-72b-instruct"
 
