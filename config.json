@@ -1,0 +1,25 @@
+{
+  "qwen3_api_key": "your-qwen3-api-key",
+  "hyperliquid": {
+    "api_key": "your-hyperliquid-api-key",
+    "api_secret": "your-hyperliquid-api-secret",
+    "testnet": true
+  },
+  "trading": {
+    "initial_balance": 10000.0,
+    "trading_interval": 120,
+    "symbols": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "BNB",
+      "DOGE",
+      "XRP"
+    ],
+    "max_position_size": 0.2,
+    "max_leverage": 20
+  },
+  "database": {
+    "path": "trading_data.db"
+  }
+}

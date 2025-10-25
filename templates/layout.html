@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Trading Bot{% endblock %} - Qwen3-max</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ range(1, 10000) | random }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">AI Trading Bot</h1>
+                <div class="header-info">
+                    <button id="theme-toggle" class="theme-toggle-btn" title="テーマ切り替え">
+                        <span class="theme-icon">Dark</span>
+                    </button>
+                    <span class="model-badge">Qwen3-max</span>
+                    <span class="bot-status" id="bot-status">
+                        <span class="status-dot"></span>
+                        <span class="status-text">読み込み中...</span>
+                    </span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ナビゲーション -->
+        <nav class="nav">
+            <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                ダッシュボード
+            </a>
+            <a href="/positions" class="nav-item {% if request.path == '/positions' %}active{% endif %}">
+                ポジション
+            </a>
+            <a href="/trades" class="nav-item {% if request.path == '/trades' %}active{% endif %}">
+                取引履歴
+            </a>
+            <a href="/performance" class="nav-item {% if request.path == '/performance' %}active{% endif %}">
+                パフォーマンス
+            </a>
+            <a href="/ai-decisions" class="nav-item {% if request.path == '/ai-decisions' %}active{% endif %}">
+                AI判断
+            </a>
+        </nav>
+
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- フッター -->
+        <footer class="footer">
+            <p>© 2025 AI Trading Bot - Powered by Qwen3-max | シミュレーションモード</p>
+            <p class="last-update">最終更新: <span id="last-update-time">--</span></p>
+        </footer>
+    </div>
+
+    <!-- ボット制御ボタン（固定） -->
+    <div class="control-panel">
+        <button id="start-bot-btn" class="control-btn start-btn">開始</button>
+        <button id="stop-bot-btn" class="control-btn stop-btn">停止</button>
+    </div>
+
+    <!-- 共通JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ range(1, 10000) | random }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+

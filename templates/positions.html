@@ -1,0 +1,151 @@
+{% extends "layout.html" %}
+
+{% block title %}ポジション{% endblock %}
+
+{% block content %}
+<div class="positions-page">
+    <h1 class="page-title">現在のポジション</h1>
+    
+    <div class="positions-summary">
+        <div class="summary-item">
+            <span class="summary-label">総ポジション価値:</span>
+            <span class="summary-value" id="total-positions-value">$0.00</span>
+        </div>
+    </div>
+    
+    <div class="positions-container" id="positions-container">
+        <div class="loading">ポジションデータを読み込み中...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function getExitPlanHtml(symbol, currentPrice) {
+        try {
+            const response = await fetch(`/api/exit-plan/${symbol}`);
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            if (data.error || !data.exit_plan) return null;
+
+            const plan = data.exit_plan;
+
+            let html = '<div class="exit-plan-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">';
+            html += '<h4 style="font-size: 0.9em; margin-bottom: 10px; color: #00aaff;">Exit Plan</h4>';
+
+            if (plan.profit_target) {
+                const targetPct = ((plan.profit_target - currentPrice) / currentPrice) * 100;
+                const targetClass = targetPct > 0 ? 'positive' : 'negative';
+                html += `<div class="detail-row" style="font-size: 0.85em;">
+                    <span class="detail-label">Profit Target:</span>
+                    <span class="detail-value ${targetClass}">$${plan.profit_target.toFixed(2)} (${targetPct >= 0 ? '+' : ''}${targetPct.toFixed(2)}%)</span>
+                </div>`;
+            }
+
+            if (plan.stop_loss) {
+                const lossPct = ((plan.stop_loss - currentPrice) / currentPrice) * 100;
+                const lossClass = lossPct < 0 ? 'negative' : '';
+                html += `<div class="detail-row" style="font-size: 0.85em;">
+                    <span class="detail-label">Stop Loss:</span>
+                    <span class="detail-value ${lossClass}">$${plan.stop_loss.toFixed(2)} (${lossPct.toFixed(2)}%)</span>
+                </div>`;
+            }
+
+            if (plan.invalidation_condition) {
+                html += `<div class="detail-row" style="font-size: 0.85em;">
+                    <span class="detail-label">Invalidation:</span>
+                    <span class="detail-value" style="color: #ff9800;">${plan.invalidation_condition}</span>
+                </div>`;
+            }
+
+            html += '</div>';
+            return html;
+
+        } catch (error) {
+            console.error('Error fetching exit plan:', error);
+            return null;
+        }
+    }
+
+    async function updatePositions() {
+        try {
+            const response = await fetch('/api/positions');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Positions error:', data.error);
+                return;
+            }
+            
+            const container = document.getElementById('positions-container');
+            container.innerHTML = '';
+            
+            if (data.positions.length === 0) {
+                container.innerHTML = '<div class="no-data">現在ポジションはありません</div>';
+                return;
+            }
+            
+            let totalValue = 0;
+            
+            data.positions.forEach(pos => {
+                totalValue += pos.value;
+                
+                const pnlClass = pos.pnl > 0 ? 'positive' : pos.pnl < 0 ? 'negative' : '';
+                
+                const posCard = document.createElement('div');
+                posCard.className = 'position-card';
+                posCard.innerHTML = `
+                    <div class="position-header">
+                        <h3 class="position-symbol">${pos.symbol}</h3>
+                        <span class="position-leverage">${pos.leverage}x</span>
+                    </div>
+                    <div class="position-details">
+                        <div class="detail-row">
+                            <span class="detail-label">数量:</span>
+                            <span class="detail-value">${pos.quantity.toFixed(6)}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">平均取得価格:</span>
+                            <span class="detail-value">$${pos.avg_price.toFixed(2)}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">現在価格:</span>
+                            <span class="detail-value">$${pos.current_price.toFixed(2)}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">ポジション価値:</span>
+                            <span class="detail-value">$${pos.value.toFixed(2)}</span>
+                        </div>
+                        <div class="detail-row highlight">
+                            <span class="detail-label">含み損益:</span>
+                            <span class="detail-value ${pnlClass}">
+                                $${pos.pnl >= 0 ? '+' : ''}${pos.pnl.toFixed(2)}
+                                (${pos.pnl_percentage >= 0 ? '+' : ''}${pos.pnl_percentage.toFixed(2)}%)
+                            </span>
+                        </div>
+                    </div>
+                `;
+
+                // Exit Plan情報を追加
+                const exitPlanHtml = await getExitPlanHtml(pos.symbol, pos.current_price);
+                if (exitPlanHtml) {
+                    posCard.innerHTML += exitPlanHtml;
+                }
+                
+                container.appendChild(posCard);
+            });
+            
+            document.getElementById('total-positions-value').textContent = `$${totalValue.toFixed(2)}`;
+            document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
+            
+        } catch (error) {
+            console.error('Error updating positions:', error);
+        }
+    }
+    
+    updatePositions();
+    setInterval(updatePositions, 5000);  // 5秒ごとに更新
+</script>
+{% endblock %}
+

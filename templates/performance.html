@@ -1,0 +1,213 @@
+{% extends "layout.html" %}
+
+{% block title %}パフォーマンス{% endblock %}
+
+{% block content %}
+<div class="performance-page">
+    <h1 class="page-title">パフォーマンス統計</h1>
+    
+    <!-- 総合統計 -->
+    <div class="performance-summary">
+        <div class="perf-card">
+            <div class="perf-label">総取引数</div>
+            <div class="perf-value" id="perf-total-trades">0</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">勝ちトレード</div>
+            <div class="perf-value positive" id="perf-winning-trades">0</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">負けトレード</div>
+            <div class="perf-value negative" id="perf-losing-trades">0</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">勝率</div>
+            <div class="perf-value" id="perf-win-rate">0.00%</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">総損益</div>
+            <div class="perf-value" id="perf-total-pnl">$0.00</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">平均損益</div>
+            <div class="perf-value" id="perf-avg-pnl">$0.00</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">最大利益</div>
+            <div class="perf-value positive" id="perf-max-profit">$0.00</div>
+        </div>
+        <div class="perf-card">
+            <div class="perf-label">最大損失</div>
+            <div class="perf-value negative" id="perf-max-loss">$0.00</div>
+        </div>
+    </div>
+    
+    <!-- 資産価値チャート -->
+    <div class="chart-section">
+        <h2 class="section-title">資産価値の推移</h2>
+        <canvas id="portfolio-chart"></canvas>
+    </div>
+    
+    <!-- 資産別パフォーマンス -->
+    <div class="asset-performance-section">
+        <h2 class="section-title">資産別パフォーマンス</h2>
+        <div id="asset-performance-container">
+            <div class="loading">パフォーマンスデータを読み込み中...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let portfolioChart = null;
+    
+    async function updatePerformance() {
+        try {
+            const response = await fetch('/api/performance');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Performance error:', data.error);
+                return;
+            }
+            
+            // 統計データ
+            const stats = data.stats;
+            document.getElementById('perf-total-trades').textContent = stats.total_trades;
+            document.getElementById('perf-winning-trades').textContent = stats.winning_trades;
+            document.getElementById('perf-losing-trades').textContent = stats.losing_trades;
+            document.getElementById('perf-win-rate').textContent = `${stats.win_rate.toFixed(2)}%`;
+            
+            const totalPnl = stats.total_pnl;
+            const totalPnlEl = document.getElementById('perf-total-pnl');
+            totalPnlEl.textContent = `$${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}`;
+            totalPnlEl.className = `perf-value ${totalPnl >= 0 ? 'positive' : 'negative'}`;
+            
+            const avgPnl = stats.avg_pnl;
+            const avgPnlEl = document.getElementById('perf-avg-pnl');
+            avgPnlEl.textContent = `$${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(2)}`;
+            avgPnlEl.className = `perf-value ${avgPnl >= 0 ? 'positive' : 'negative'}`;
+            
+            document.getElementById('perf-max-profit').textContent = `$${stats.max_profit.toFixed(2)}`;
+            document.getElementById('perf-max-loss').textContent = `$${stats.max_loss.toFixed(2)}`;
+            
+            // 資産別パフォーマンス
+            updateAssetPerformance(data.asset_performance);
+            
+            // チャート
+            updatePortfolioChart(data.portfolio_history);
+            
+            document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
+            
+        } catch (error) {
+            console.error('Error updating performance:', error);
+        }
+    }
+    
+    function updateAssetPerformance(assetPerf) {
+        const container = document.getElementById('asset-performance-container');
+        container.innerHTML = '';
+        
+        if (Object.keys(assetPerf).length === 0) {
+            container.innerHTML = '<div class="no-data">資産別データがありません</div>';
+            return;
+        }
+        
+        Object.entries(assetPerf).forEach(([symbol, perf]) => {
+            const pnlClass = perf.total_pnl > 0 ? 'positive' : perf.total_pnl < 0 ? 'negative' : '';
+            
+            const card = document.createElement('div');
+            card.className = 'asset-perf-card';
+            card.innerHTML = `
+                <h3 class="asset-symbol">${symbol}</h3>
+                <div class="asset-perf-grid">
+                    <div class="asset-perf-item">
+                        <span class="label">取引数:</span>
+                        <span class="value">${perf.total_trades}</span>
+                    </div>
+                    <div class="asset-perf-item">
+                        <span class="label">勝率:</span>
+                        <span class="value">${perf.win_rate.toFixed(2)}%</span>
+                    </div>
+                    <div class="asset-perf-item">
+                        <span class="label">総損益:</span>
+                        <span class="value ${pnlClass}">$${perf.total_pnl >= 0 ? '+' : ''}${perf.total_pnl.toFixed(2)}</span>
+                    </div>
+                    <div class="asset-perf-item">
+                        <span class="label">平均損益:</span>
+                        <span class="value">$${perf.avg_pnl >= 0 ? '+' : ''}${perf.avg_pnl.toFixed(2)}</span>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(card);
+        });
+    }
+    
+    function updatePortfolioChart(history) {
+        if (!history || history.length === 0) return;
+        
+        const chartData = history.slice().reverse().map(item => ({
+            x: new Date(item.timestamp),
+            y: item.total_value
+        }));
+        
+        const ctx = document.getElementById('portfolio-chart').getContext('2d');
+        
+        if (portfolioChart) {
+            portfolioChart.destroy();
+        }
+        
+        portfolioChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: '総資産価値 ($)',
+                    data: chartData,
+                    borderColor: '#00aaff',
+                    backgroundColor: 'rgba(0, 170, 255, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute',
+                            displayFormats: {
+                                minute: 'HH:mm'
+                            }
+                        },
+                        ticks: { color: '#888888' },
+                        grid: { color: '#333333' }
+                    },
+                    y: {
+                        ticks: { 
+                            color: '#888888',
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            }
+                        },
+                        grid: { color: '#333333' }
+                    }
+                }
+            }
+        });
+    }
+    
+    updatePerformance();
+    setInterval(updatePerformance, 10000);  // 10秒ごとに更新
+</script>
+{% endblock %}
+

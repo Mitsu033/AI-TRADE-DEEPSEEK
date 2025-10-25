@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+
+{% block title %}AI判断{% endblock %}
+
+{% block content %}
+<div class="ai-decisions-page">
+    <h1 class="page-title">AI判断ログ</h1>
+    
+    <div class="decisions-container" id="decisions-container">
+        <div class="loading">AI判断データを読み込み中...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function updateAIDecisions() {
+        try {
+            const response = await fetch('/api/ai-decisions?limit=20');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('AI Decisions error:', data.error);
+                return;
+            }
+            
+            const container = document.getElementById('decisions-container');
+            container.innerHTML = '';
+            
+            if (data.decisions.length === 0) {
+                container.innerHTML = '<div class="no-data">AI判断データがありません</div>';
+                return;
+            }
+            
+            data.decisions.forEach(decision => {
+                const decisionData = JSON.parse(decision.decision_json);
+                const action = decisionData.action || 'N/A';
+                const actionClass = action === 'buy' ? 'action-buy' : action === 'sell' ? 'action-sell' : 'action-hold';
+                const successClass = decision.executed ? 'success' : 'not-executed';
+                
+                const card = document.createElement('div');
+                card.className = `decision-card ${successClass}`;
+                card.innerHTML = `
+                    <div class="decision-header">
+                        <div class="decision-time">${new Date(decision.timestamp).toLocaleString('ja-JP')}</div>
+                        <div class="decision-status">
+                            ${decision.executed ? '[実行済み]' : '[未実行]'}
+                        </div>
+                    </div>
+                    <div class="decision-body">
+                        <div class="decision-main">
+                            <span class="decision-action ${actionClass}">${action.toUpperCase()}</span>
+                            <span class="decision-asset">${decisionData.asset || 'N/A'}</span>
+                            <span class="decision-amount">$${(decisionData.amount_usd || 0).toFixed(2)}</span>
+                            <span class="decision-leverage">${decisionData.leverage || 1}x</span>
+                        </div>
+                        <div class="decision-confidence">
+                            信頼度: ${((decisionData.confidence || 0) * 100).toFixed(0)}%
+                        </div>
+                        <div class="decision-reasoning">
+                            <strong>判断理由:</strong>
+                            <p>${decision.reasoning || 'なし'}</p>
+                        </div>
+                        ${decisionData.stop_loss ? `
+                        <div class="decision-details">
+                            <span>損切り: $${decisionData.stop_loss.toFixed(2)}</span>
+                            ${decisionData.take_profit ? `<span>利確: $${decisionData.take_profit.toFixed(2)}</span>` : ''}
+                        </div>
+                        ` : ''}
+                        ${decisionData.exit_plan ? `
+                        <div class="decision-exit-plan" style="margin-top: 10px; padding: 10px; background: rgba(0, 170, 255, 0.1); border-left: 3px solid #00aaff; border-radius: 4px;">
+                            <strong style="color: #00aaff;">Exit Plan:</strong>
+                            <div style="margin-top: 8px; font-size: 0.9em;">
+                                ${decisionData.exit_plan.profit_target ? `<div style="color: #00ff88; margin: 3px 0;">Profit Target: $${decisionData.exit_plan.profit_target.toFixed(2)}</div>` : ''}
+                                ${decisionData.exit_plan.stop_loss ? `<div style="color: #ff4444; margin: 3px 0;">Stop Loss: $${decisionData.exit_plan.stop_loss.toFixed(2)}</div>` : ''}
+                                ${decisionData.exit_plan.invalidation ? `<div style="color: #ff9800; margin: 3px 0;">Invalidation: ${decisionData.exit_plan.invalidation}</div>` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${decisionData.exit_condition && !decisionData.exit_plan ? `
+                        <div class="decision-exit-condition" style="margin-top: 10px; padding: 8px; background: rgba(255, 152, 0, 0.1); border-left: 3px solid #ff9800; border-radius: 4px;">
+                            <strong style="color: #ff9800;">撤退条件:</strong>
+                            <p style="color: #ccc; margin: 5px 0 0 0; font-size: 0.95em;">${decisionData.exit_condition}</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+            
+            document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
+            
+        } catch (error) {
+            console.error('Error updating AI decisions:', error);
+        }
+    }
+    
+    updateAIDecisions();
+    setInterval(updateAIDecisions, 10000);  // 10秒ごとに更新
+</script>
+{% endblock %}
+

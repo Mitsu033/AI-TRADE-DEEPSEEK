@@ -1,0 +1,412 @@
+{% extends "layout.html" %}
+
+{% block title %}ダッシュボード{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- サマリーカード -->
+    <div class="summary-cards">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">総資産</span>
+            </div>
+            <div class="card-value" id="total-value">$0.00</div>
+            <div class="card-subtitle">
+                <span id="roi-display" class="roi-neutral">ROI: 0.00%</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">現金</span>
+            </div>
+            <div class="card-value" id="cash-value">$0.00</div>
+            <div class="card-subtitle">利用可能</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">ポジション価値</span>
+            </div>
+            <div class="card-value" id="positions-value">$0.00</div>
+            <div class="card-subtitle">保有中</div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">損益 (PnL)</span>
+            </div>
+            <div class="card-value" id="pnl-value">$0.00</div>
+            <div class="card-subtitle" id="pnl-percentage">0.00%</div>
+        </div>
+    </div>
+
+    <!-- 取引統計 -->
+    <div class="stats-section">
+        <h2 class="section-title">取引統計</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-label">総取引数</div>
+                <div class="stat-value" id="total-trades">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">勝ちトレード</div>
+                <div class="stat-value stat-positive" id="winning-trades">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">負けトレード</div>
+                <div class="stat-value stat-negative" id="losing-trades">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">勝率</div>
+                <div class="stat-value" id="win-rate">0.00%</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 資産推移チャート -->
+    <div class="portfolio-chart-section">
+        <div class="chart-header">
+            <h2 class="section-title">資産推移</h2>
+            <div class="chart-controls">
+                <button class="period-btn active" data-period="all">ALL</button>
+                <button class="period-btn" data-period="24h">24時間</button>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="portfolio-value-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- 市場サマリー -->
+    <div class="market-section">
+        <h2 class="section-title">市場サマリー</h2>
+        <div class="market-grid" id="market-grid">
+            <div class="loading">市場データを読み込み中...</div>
+        </div>
+    </div>
+
+    <!-- 最近の取引 -->
+    <div class="recent-trades-section">
+        <h2 class="section-title">最近の取引</h2>
+        <div class="trades-table-container">
+            <table class="trades-table" id="recent-trades-table">
+                <thead>
+                    <tr>
+                        <th>時刻</th>
+                        <th>アクション</th>
+                        <th>銘柄</th>
+                        <th>価格</th>
+                        <th>金額</th>
+                        <th>損益</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-trades-body">
+                    <tr>
+                        <td colspan="6" class="loading">取引データを読み込み中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let portfolioValueChart = null;
+    let portfolioHistoryData = [];
+    let currentPeriod = 'all';
+    
+    // ダッシュボードデータを更新
+    async function updateDashboard() {
+        try {
+            const response = await fetch('/api/dashboard');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Dashboard error:', data.error);
+                return;
+            }
+            
+            // ポートフォリオ
+            document.getElementById('total-value').textContent = `$${data.portfolio.total_value.toFixed(2)}`;
+            document.getElementById('cash-value').textContent = `$${data.portfolio.cash.toFixed(2)}`;
+            document.getElementById('positions-value').textContent = `$${data.portfolio.positions_value.toFixed(2)}`;
+            
+            // PnL
+            const pnl = data.portfolio.pnl;
+            const pnlElement = document.getElementById('pnl-value');
+            pnlElement.textContent = `$${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`;
+            pnlElement.className = `card-value ${pnl >= 0 ? 'positive' : 'negative'}`;
+            
+            // ROI
+            const roi = data.portfolio.roi;
+            const roiElement = document.getElementById('roi-display');
+            roiElement.textContent = `ROI: ${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%`;
+            roiElement.className = `${roi > 0 ? 'roi-positive' : roi < 0 ? 'roi-negative' : 'roi-neutral'}`;
+            
+            // 統計
+            document.getElementById('total-trades').textContent = data.stats.total_trades;
+            document.getElementById('winning-trades').textContent = data.stats.winning_trades;
+            document.getElementById('losing-trades').textContent = data.stats.losing_trades;
+            document.getElementById('win-rate').textContent = `${data.stats.win_rate.toFixed(2)}%`;
+            
+            // ボットステータス
+            updateBotStatus(data.status);
+            
+            // 最終更新時刻
+            document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
+            
+        } catch (error) {
+            console.error('Error updating dashboard:', error);
+        }
+    }
+    
+    // 市場データを更新
+    async function updateMarket() {
+        try {
+            const response = await fetch('/api/market');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Market error:', data.error);
+                return;
+            }
+            
+            const marketGrid = document.getElementById('market-grid');
+            marketGrid.innerHTML = '';
+            
+            data.market.forEach(item => {
+                const change = item.change_24h;
+                const changeClass = change >= 0 ? 'positive' : 'negative';
+                const changeSymbol = change >= 0 ? '+' : '';
+                
+                const marketCard = document.createElement('div');
+                marketCard.className = 'market-card';
+                marketCard.innerHTML = `
+                    <div class="market-symbol">${item.symbol}</div>
+                    <div class="market-price">$${item.price.toFixed(2)}</div>
+                    <div class="market-change ${changeClass}">
+                        ${changeSymbol}${change.toFixed(2)}%
+                    </div>
+                `;
+                
+                marketGrid.appendChild(marketCard);
+            });
+            
+        } catch (error) {
+            console.error('Error updating market:', error);
+        }
+    }
+    
+    // 最近の取引を更新
+    async function updateRecentTrades() {
+        try {
+            const response = await fetch('/api/trades?limit=10');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Trades error:', data.error);
+                return;
+            }
+            
+            const tbody = document.getElementById('recent-trades-body');
+            tbody.innerHTML = '';
+            
+            if (data.trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="no-data">取引データがありません</td></tr>';
+                return;
+            }
+            
+            data.trades.forEach(trade => {
+                const row = document.createElement('tr');
+                const actionClass = trade.action === 'buy' ? 'action-buy' : trade.action === 'sell' ? 'action-sell' : 'action-hold';
+                const pnlClass = trade.pnl > 0 ? 'positive' : trade.pnl < 0 ? 'negative' : '';
+                
+                row.innerHTML = `
+                    <td>${new Date(trade.timestamp).toLocaleString('ja-JP')}</td>
+                    <td><span class="${actionClass}">${trade.action.toUpperCase()}</span></td>
+                    <td>${trade.asset}</td>
+                    <td>$${trade.price.toFixed(2)}</td>
+                    <td>$${trade.amount_usd.toFixed(2)}</td>
+                    <td class="${pnlClass}">$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+        } catch (error) {
+            console.error('Error updating recent trades:', error);
+        }
+    }
+    
+    // 資産推移チャートを更新
+    async function updatePortfolioChart() {
+        try {
+            const response = await fetch('/api/performance');
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Performance error:', data.error);
+                return;
+            }
+            
+            portfolioHistoryData = data.portfolio_history || [];
+            renderPortfolioChart();
+            
+        } catch (error) {
+            console.error('Error updating portfolio chart:', error);
+        }
+    }
+    
+    // チャートを描画
+    function renderPortfolioChart() {
+        let filteredData = portfolioHistoryData;
+        
+        // 24時間フィルター
+        if (currentPeriod === '24h' && filteredData.length > 0) {
+            const now = new Date();
+            const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            filteredData = filteredData.filter(item => {
+                const itemDate = new Date(item.timestamp);
+                return itemDate >= oneDayAgo;
+            });
+        }
+        
+        if (filteredData.length === 0) {
+            return;
+        }
+        
+        // データを時系列順にソート
+        const sortedData = filteredData.slice().sort((a, b) => 
+            new Date(a.timestamp) - new Date(b.timestamp)
+        );
+        
+        const chartData = sortedData.map(item => ({
+            x: new Date(item.timestamp),
+            y: item.total_value
+        }));
+        
+        const ctx = document.getElementById('portfolio-value-chart').getContext('2d');
+        
+        if (portfolioValueChart) {
+            portfolioValueChart.destroy();
+        }
+        
+        // 初期値と最終値を取得
+        const initialValue = sortedData[0].total_value;
+        const currentValue = sortedData[sortedData.length - 1].total_value;
+        const isPositive = currentValue >= initialValue;
+        
+        portfolioValueChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: '総資産価値 ($)',
+                    data: chartData,
+                    borderColor: isPositive ? '#00ff88' : '#ff4444',
+                    backgroundColor: isPositive ? 'rgba(0, 255, 136, 0.1)' : 'rgba(255, 68, 68, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: isPositive ? '#00ff88' : '#ff4444',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        labels: { 
+                            color: getComputedStyle(document.body).getPropertyValue('--text-primary') || '#ffffff',
+                            font: { size: 14 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: document.body.classList.contains('light-mode') ? 'rgba(255, 255, 255, 0.95)' : 'rgba(20, 25, 40, 0.95)',
+                        titleColor: getComputedStyle(document.body).getPropertyValue('--text-primary') || '#ffffff',
+                        bodyColor: getComputedStyle(document.body).getPropertyValue('--text-primary') || '#ffffff',
+                        borderColor: '#00aaff',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return '$' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: currentPeriod === '24h' ? 'hour' : 'day',
+                            displayFormats: {
+                                hour: 'HH:mm',
+                                day: 'MM/dd'
+                            }
+                        },
+                        ticks: { 
+                            color: getComputedStyle(document.body).getPropertyValue('--text-secondary') || '#888888',
+                            font: { size: 12 }
+                        },
+                        grid: { 
+                            color: getComputedStyle(document.body).getPropertyValue('--grid-color') || 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false
+                        }
+                    },
+                    y: {
+                        ticks: { 
+                            color: getComputedStyle(document.body).getPropertyValue('--text-secondary') || '#888888',
+                            font: { size: 12 },
+                            callback: function(value) {
+                                return '$' + value.toFixed(0);
+                            }
+                        },
+                        grid: { 
+                            color: getComputedStyle(document.body).getPropertyValue('--grid-color') || 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // 期間切り替えボタンのイベントリスナー
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            // 全てのボタンからactiveクラスを削除
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            // クリックされたボタンにactiveクラスを追加
+            this.classList.add('active');
+            // 期間を更新
+            currentPeriod = this.dataset.period;
+            // チャートを再描画
+            renderPortfolioChart();
+        });
+    });
+    
+    // 初回ロードと定期更新
+    updateDashboard();
+    updateMarket();
+    updateRecentTrades();
+    updatePortfolioChart();
+    
+    setInterval(updateDashboard, 5000);  // 5秒ごと
+    setInterval(updateMarket, 10000);    // 10秒ごと
+    setInterval(updateRecentTrades, 10000);  // 10秒ごと
+    setInterval(updatePortfolioChart, 15000);  // 15秒ごと
+</script>
+{% endblock %}
+

@@ -1,0 +1,209 @@
+{% extends "layout.html" %}
+
+{% block title %}取引履歴{% endblock %}
+
+{% block content %}
+<div class="trades-page">
+    <h1 class="page-title">取引履歴</h1>
+    
+    <div class="trades-filters">
+        <select id="asset-filter" class="filter-select">
+            <option value="all">全ての銘柄</option>
+            <option value="BTC">BTC</option>
+            <option value="ETH">ETH</option>
+            <option value="SOL">SOL</option>
+            <option value="BNB">BNB</option>
+            <option value="DOGE">DOGE</option>
+            <option value="XRP">XRP</option>
+        </select>
+        
+        <select id="action-filter" class="filter-select">
+            <option value="all">全てのアクション</option>
+            <option value="buy">買い</option>
+            <option value="sell">売り</option>
+            <option value="hold">保持</option>
+        </select>
+        
+        <select id="limit-filter" class="filter-select">
+            <option value="50">最新50件</option>
+            <option value="100">最新100件</option>
+            <option value="200">最新200件</option>
+        </select>
+    </div>
+    
+    <div class="trades-table-wrapper">
+        <table class="trades-table">
+            <thead>
+                <tr>
+                    <th>時刻</th>
+                    <th>アクション</th>
+                    <th>銘柄</th>
+                    <th>価格</th>
+                    <th>金額</th>
+                    <th>レバレッジ</th>
+                    <th>損益</th>
+                    <th>損益率</th>
+                    <th>理由</th>
+                </tr>
+            </thead>
+            <tbody id="trades-tbody">
+                <tr>
+                    <td colspan="9" class="loading">取引データを読み込み中...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="chart-section">
+        <h2 class="section-title">累積損益チャート</h2>
+        <canvas id="pnl-chart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let pnlChart = null;
+    let allTrades = [];
+    
+    async function updateTrades() {
+        try {
+            const limit = document.getElementById('limit-filter').value;
+            const response = await fetch(`/api/trades?limit=${limit}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Trades error:', data.error);
+                return;
+            }
+            
+            allTrades = data.trades;
+            filterAndDisplayTrades();
+            updatePnLChart();
+            
+            document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
+            
+        } catch (error) {
+            console.error('Error updating trades:', error);
+        }
+    }
+    
+    function filterAndDisplayTrades() {
+        const assetFilter = document.getElementById('asset-filter').value;
+        const actionFilter = document.getElementById('action-filter').value;
+        
+        let filteredTrades = allTrades;
+        
+        if (assetFilter !== 'all') {
+            filteredTrades = filteredTrades.filter(t => t.asset === assetFilter);
+        }
+        
+        if (actionFilter !== 'all') {
+            filteredTrades = filteredTrades.filter(t => t.action === actionFilter);
+        }
+        
+        const tbody = document.getElementById('trades-tbody');
+        tbody.innerHTML = '';
+        
+        if (filteredTrades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="no-data">取引データがありません</td></tr>';
+            return;
+        }
+        
+        filteredTrades.forEach(trade => {
+            const row = document.createElement('tr');
+            const actionClass = trade.action === 'buy' ? 'action-buy' : trade.action === 'sell' ? 'action-sell' : 'action-hold';
+            const pnlClass = trade.pnl > 0 ? 'positive' : trade.pnl < 0 ? 'negative' : '';
+            
+            row.innerHTML = `
+                <td>${new Date(trade.timestamp).toLocaleString('ja-JP')}</td>
+                <td><span class="${actionClass}">${trade.action.toUpperCase()}</span></td>
+                <td><strong>${trade.asset}</strong></td>
+                <td>$${trade.price.toFixed(2)}</td>
+                <td>$${trade.amount_usd.toFixed(2)}</td>
+                <td>${trade.leverage}x</td>
+                <td class="${pnlClass}">$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</td>
+                <td class="${pnlClass}">${trade.pnl_percentage >= 0 ? '+' : ''}${trade.pnl_percentage.toFixed(2)}%</td>
+                <td class="reasoning-cell" title="${trade.reasoning || ''}">${(trade.reasoning || '').substring(0, 50)}...</td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
+    
+    function updatePnLChart() {
+        if (allTrades.length === 0) return;
+        
+        // 累積PnLを計算
+        let cumulativePnL = 0;
+        const chartData = allTrades.slice().reverse().map(trade => {
+            cumulativePnL += trade.pnl;
+            return {
+                x: new Date(trade.timestamp),
+                y: cumulativePnL
+            };
+        });
+        
+        const ctx = document.getElementById('pnl-chart').getContext('2d');
+        
+        if (pnlChart) {
+            pnlChart.destroy();
+        }
+        
+        pnlChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: '累積損益 ($)',
+                    data: chartData,
+                    borderColor: cumulativePnL >= 0 ? '#00ff88' : '#ff4444',
+                    backgroundColor: cumulativePnL >= 0 ? 'rgba(0, 255, 136, 0.1)' : 'rgba(255, 68, 68, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute',
+                            displayFormats: {
+                                minute: 'HH:mm'
+                            }
+                        },
+                        ticks: { color: '#888888' },
+                        grid: { color: '#333333' }
+                    },
+                    y: {
+                        ticks: { 
+                            color: '#888888',
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            }
+                        },
+                        grid: { color: '#333333' }
+                    }
+                }
+            }
+        });
+    }
+    
+    // フィルター変更時
+    document.getElementById('asset-filter').addEventListener('change', filterAndDisplayTrades);
+    document.getElementById('action-filter').addEventListener('change', filterAndDisplayTrades);
+    document.getElementById('limit-filter').addEventListener('change', updateTrades);
+    
+    updateTrades();
+    setInterval(updateTrades, 10000);  // 10秒ごとに更新
+</script>
+{% endblock %}
+
