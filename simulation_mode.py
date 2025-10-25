@@ -338,12 +338,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         for symbol in self.symbols:
             try:
                 binance_symbol = f"{symbol}USDT"
-                # 過去100本の3分足キャンドルを取得（5時間分）
+                # 過去500本の3分足キャンドルを取得（25時間分 - 50MA/200MA計算に十分）
                 url = f"https://api.binance.com/api/v3/klines"
                 params = {
                     'symbol': binance_symbol,
                     'interval': '3m',  # 3分足
-                    'limit': 100  # 最大100本
+                    'limit': 500  # 最大500本（200MA計算に必要）
                 }
 
                 # User-Agentヘッダーを追加してレート制限を回避
@@ -372,7 +372,10 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                                 }
                                 self.candle_data[symbol].append(candle)
 
-                            print(f"✅ {symbol}: {len(klines)}本のキャンドルデータを取得")
+                            # データ取得状況を詳細に表示
+                            data_count = len(klines)
+                            ma200_ready = "✅ 可能" if data_count >= 200 else f"⏳ 不可 (あと{200-data_count}本必要)"
+                            print(f"✅ {symbol}: {data_count}本取得 | 200MA計算: {ma200_ready}")
                             break  # 成功したらループ終了
 
                         elif response.status_code == 418:
@@ -449,11 +452,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                         # 新しいキャンドルを追加
                         self.candle_data[symbol].append(candle)
 
-                        # 最大100本を保持
-                        if len(self.candle_data[symbol]) > 100:
+                        # 最大600本を保持（200MA計算 + 余裕）
+                        # 600本 = 30時間分のデータ
+                        if len(self.candle_data[symbol]) > 600:
                             self.candle_data[symbol].pop(0)
 
-                        print(f"🔄 {symbol}: 新しいキャンドルを追加 (価格: ${candle['close']:.2f})")
+                        print(f"🔄 {symbol}: 新しいキャンドルを追加 (価格: ${candle['close']:.2f}, 保持: {len(self.candle_data[symbol])}本)")
                 elif response.status_code == 418:
                     print(f"⚠️ {symbol}: レート制限 (418) - 更新をスキップ")
 
