@@ -71,28 +71,49 @@
     async function updatePositions() {
         try {
             const response = await fetch('/api/positions');
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
             const data = await response.json();
-            
+
             if (data.error) {
                 console.error('Positions error:', data.error);
+                const container = document.getElementById('positions-container');
+
+                // データ初期化中の場合は特別なメッセージを表示
+                if (data.status === 'initializing') {
+                    container.innerHTML = `<div class="loading" style="color: #00aaff; padding: 20px; text-align: center;">
+                        ${data.error}<br>
+                        <small>市場データを取得しています...</small>
+                    </div>`;
+                } else {
+                    container.innerHTML = `<div class="error-message" style="color: #ff4444; padding: 20px; text-align: center;">
+                        エラー: ${data.error}<br>
+                        <small>API応答を確認してください</small>
+                    </div>`;
+                }
                 return;
             }
-            
+
             const container = document.getElementById('positions-container');
             container.innerHTML = '';
-            
-            if (data.positions.length === 0) {
+
+            if (!data.positions || data.positions.length === 0) {
                 container.innerHTML = '<div class="no-data">現在ポジションはありません</div>';
+                document.getElementById('total-positions-value').textContent = '$0.00';
                 return;
             }
-            
+
             let totalValue = 0;
-            
-            data.positions.forEach(pos => {
+
+            // forEach は async/await をサポートしないので for...of を使用
+            for (const pos of data.positions) {
                 totalValue += pos.value;
-                
+
                 const pnlClass = pos.pnl > 0 ? 'positive' : pos.pnl < 0 ? 'negative' : '';
-                
+
                 const posCard = document.createElement('div');
                 posCard.className = 'position-card';
                 posCard.innerHTML = `
@@ -132,15 +153,20 @@
                 if (exitPlanHtml) {
                     posCard.innerHTML += exitPlanHtml;
                 }
-                
+
                 container.appendChild(posCard);
-            });
+            }
             
             document.getElementById('total-positions-value').textContent = `$${totalValue.toFixed(2)}`;
             document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
             
         } catch (error) {
             console.error('Error updating positions:', error);
+            const container = document.getElementById('positions-container');
+            container.innerHTML = `<div class="error-message" style="color: #ff4444; padding: 20px; text-align: center;">
+                通信エラー: ${error.message}<br>
+                <small>サーバーが起動しているか確認してください</small>
+            </div>`;
         }
     }
     

@@ -41,29 +41,6 @@
         </div>
     </div>
 
-    <!-- 取引統計 -->
-    <div class="stats-section">
-        <h2 class="section-title">取引統計</h2>
-        <div class="stats-grid">
-            <div class="stat-item">
-                <div class="stat-label">総取引数</div>
-                <div class="stat-value" id="total-trades">0</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">勝ちトレード</div>
-                <div class="stat-value stat-positive" id="winning-trades">0</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">負けトレード</div>
-                <div class="stat-value stat-negative" id="losing-trades">0</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">勝率</div>
-                <div class="stat-value" id="win-rate">0.00%</div>
-            </div>
-        </div>
-    </div>
-
     <!-- 資産推移チャート -->
     <div class="portfolio-chart-section">
         <div class="chart-header">
@@ -83,30 +60,6 @@
         <h2 class="section-title">市場サマリー</h2>
         <div class="market-grid" id="market-grid">
             <div class="loading">市場データを読み込み中...</div>
-        </div>
-    </div>
-
-    <!-- 最近の取引 -->
-    <div class="recent-trades-section">
-        <h2 class="section-title">最近の取引</h2>
-        <div class="trades-table-container">
-            <table class="trades-table" id="recent-trades-table">
-                <thead>
-                    <tr>
-                        <th>時刻</th>
-                        <th>アクション</th>
-                        <th>銘柄</th>
-                        <th>価格</th>
-                        <th>金額</th>
-                        <th>損益</th>
-                    </tr>
-                </thead>
-                <tbody id="recent-trades-body">
-                    <tr>
-                        <td colspan="6" class="loading">取引データを読み込み中...</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
     </div>
 </div>
@@ -145,13 +98,7 @@
             const roiElement = document.getElementById('roi-display');
             roiElement.textContent = `ROI: ${roi >= 0 ? '+' : ''}${roi.toFixed(2)}%`;
             roiElement.className = `${roi > 0 ? 'roi-positive' : roi < 0 ? 'roi-negative' : 'roi-neutral'}`;
-            
-            // 統計
-            document.getElementById('total-trades').textContent = data.stats.total_trades;
-            document.getElementById('winning-trades').textContent = data.stats.winning_trades;
-            document.getElementById('losing-trades').textContent = data.stats.losing_trades;
-            document.getElementById('win-rate').textContent = `${data.stats.win_rate.toFixed(2)}%`;
-            
+
             // ボットステータス
             updateBotStatus(data.status);
             
@@ -197,47 +144,6 @@
             
         } catch (error) {
             console.error('Error updating market:', error);
-        }
-    }
-    
-    // 最近の取引を更新
-    async function updateRecentTrades() {
-        try {
-            const response = await fetch('/api/trades?limit=10');
-            const data = await response.json();
-            
-            if (data.error) {
-                console.error('Trades error:', data.error);
-                return;
-            }
-            
-            const tbody = document.getElementById('recent-trades-body');
-            tbody.innerHTML = '';
-            
-            if (data.trades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="no-data">取引データがありません</td></tr>';
-                return;
-            }
-            
-            data.trades.forEach(trade => {
-                const row = document.createElement('tr');
-                const actionClass = trade.action === 'buy' ? 'action-buy' : trade.action === 'sell' ? 'action-sell' : 'action-hold';
-                const pnlClass = trade.pnl > 0 ? 'positive' : trade.pnl < 0 ? 'negative' : '';
-                
-                row.innerHTML = `
-                    <td>${new Date(trade.timestamp).toLocaleString('ja-JP')}</td>
-                    <td><span class="${actionClass}">${trade.action.toUpperCase()}</span></td>
-                    <td>${trade.asset}</td>
-                    <td>$${trade.price.toFixed(2)}</td>
-                    <td>$${trade.amount_usd.toFixed(2)}</td>
-                    <td class="${pnlClass}">$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-            
-        } catch (error) {
-            console.error('Error updating recent trades:', error);
         }
     }
     
@@ -400,12 +306,10 @@
     // 初回ロードと定期更新
     updateDashboard();
     updateMarket();
-    updateRecentTrades();
     updatePortfolioChart();
-    
+
     setInterval(updateDashboard, 5000);  // 5秒ごと
     setInterval(updateMarket, 10000);    // 10秒ごと
-    setInterval(updateRecentTrades, 10000);  // 10秒ごと
     setInterval(updatePortfolioChart, 15000);  // 15秒ごと
 </script>
 {% endblock %}

@@ -43,14 +43,21 @@ class SimulationTradingBot:
         self.max_consecutive_errors = 10  # 連続エラー上限
         
     def start_auto_trading(self):
-        """自動取引を開始"""
+        """自動取引を開始（データ取得も含めて全て開始）"""
         if self.is_running:
-            print("既に自動取引が実行中です")
+            print("⚠️ 既に自動取引が実行中です")
             return
-        
+
+        print("🚀 シミュレーション自動取引を開始します...")
+
+        # 市場データ取得が停止している場合は再開
+        if self.market_fetcher and not self.market_fetcher.running:
+            print("  📊 市場データ取得を再開中...")
+            self.market_fetcher._start_background_update()
+            print("  ✅ 市場データ取得を再開しました")
+
         self.is_running = True
         self.consecutive_errors = 0  # エラーカウンターをリセット
-        print("🚀 シミュレーション自動取引を開始します...")
 
         # 取引ループを開始（daemon=Falseで常時実行）
         self.trading_thread = threading.Thread(target=self._trading_loop, daemon=False)
@@ -59,9 +66,31 @@ class SimulationTradingBot:
         print(f"✅ 自動取引開始: {self.trading_interval}秒ごとに取引判断を実行")
     
     def stop_auto_trading(self):
-        """自動取引を停止"""
+        """自動取引を停止（データ取得も含めて全て停止）"""
+        if not self.is_running:
+            print("⚠️ 既に停止しています")
+            return
+
+        print("⏹️ 自動取引を停止中...")
+
+        # 取引ループを停止
         self.is_running = False
-        print("⏹️ 自動取引を停止しました")
+
+        # 市場データのバックグラウンド更新を停止
+        if self.market_fetcher:
+            print("  📊 市場データ取得を停止中...")
+            self.market_fetcher.stop()
+
+        # 取引スレッドの終了を待つ（最大5秒）
+        if self.trading_thread and self.trading_thread.is_alive():
+            print("  🔄 取引スレッドの終了を待機中...")
+            self.trading_thread.join(timeout=5)
+            if self.trading_thread.is_alive():
+                print("  ⚠️ 取引スレッドが終了しませんでした（タイムアウト）")
+            else:
+                print("  ✅ 取引スレッドを停止しました")
+
+        print("✅ 全ての処理を停止しました")
 
     def is_thread_alive(self) -> bool:
         """
@@ -79,7 +108,7 @@ class SimulationTradingBot:
         Returns:
             ステータス情報を含む辞書
         """
-        return {
+        status = {
             "is_running": self.is_running,
             "thread_alive": self.is_thread_alive(),
             "consecutive_errors": self.consecutive_errors,
@@ -87,6 +116,16 @@ class SimulationTradingBot:
             "last_trade_time": self.last_trade_time.isoformat() if self.last_trade_time else None,
             "trading_interval": self.trading_interval
         }
+
+        # 市場データ取得の状態を追加
+        if self.market_fetcher:
+            status["market_data_fetcher"] = {
+                "running": self.market_fetcher.running,
+                "initialized": self.market_fetcher.is_initialized,
+                "update_interval": self.market_fetcher.update_interval
+            }
+
+        return status
 
     def _trading_loop(self):
         """取引ループ（バックグラウンドで実行）- 常時実行対応"""
@@ -269,9 +308,21 @@ class SimulationTradingBot:
                     'timestamp': datetime.now().isoformat()
                 }
 
+            # アクティブなExit Planを取得（AIに既存のプランを伝える）
+            active_exit_plans = {}
+            all_plans = self.exit_monitor.db.get_active_exit_plans()
+            for plan in all_plans:
+                symbol = plan['position_symbol']
+                active_exit_plans[symbol] = {
+                    'profit_target': plan['profit_target'],
+                    'stop_loss': plan['stop_loss'],
+                    'invalidation_condition': plan['invalidation_condition'],
+                    'invalidation_price': plan['invalidation_price']
+                }
+
             # QWEN3に取引判断を依頼（Exit Planが発動しなかった場合のみ）
             print("\n🤖 AI判断を取得中...")
-            ai_response = self.qwen3.get_trading_decision(market_data, portfolio)
+            ai_response = self.qwen3.get_trading_decision(market_data, portfolio, active_exit_plans)
             
             if not ai_response["success"]:
                 return {
@@ -285,14 +336,13 @@ class SimulationTradingBot:
             decision = ai_response["decision"]
             trade_result = self._execute_trade(decision, market_data)
 
-            # Exit Planの処理（新規ポジション作成時）
+            # Exit Planの処理
             action = decision.get("action", "").lower()
             asset = decision.get("asset")
+            exit_plan = decision.get("exit_plan", {})
 
+            # 新規ポジション作成時：Exit Planを保存
             if action in ["open_long", "open_short", "buy"] and trade_result.get("status") == "success":
-                # AIが生成したExit Planを取得
-                exit_plan = decision.get("exit_plan", {})
-
                 if exit_plan and asset:
                     current_price = market_data.get(asset, {}).get('price', 0)
 
@@ -307,13 +357,38 @@ class SimulationTradingBot:
                     }
 
                     self.db.save_exit_plan(exit_plan_data)
-                    print(f"\n[Exit Plan] {asset}のExit Planを保存しました:")
+                    print(f"\n[Exit Plan - 新規] {asset}のExit Planを保存しました:")
                     print(f"  Profit Target: ${exit_plan.get('profit_target', 'N/A')}")
                     print(f"  Stop Loss: ${exit_plan.get('stop_loss', 'N/A')}")
                     print(f"  Invalidation: {exit_plan.get('invalidation', 'N/A')}")
 
+            # HOLD時：Exit Planが含まれていれば更新
+            elif action == "hold" and exit_plan and asset:
+                # 既存のExit Planをキャンセル
+                existing_plan = self.exit_monitor.get_exit_plan_for_symbol(asset)
+                if existing_plan:
+                    self.exit_monitor.cancel_exit_plan_for_symbol(asset)
+                    print(f"\n[Exit Plan - 更新] {asset}の既存プランをキャンセルしました")
+
+                # 新しいExit Planを保存
+                current_price = market_data.get(asset, {}).get('price', 0)
+                exit_plan_data = {
+                    'position_symbol': asset,
+                    'entry_price': current_price,
+                    'profit_target': exit_plan.get('profit_target'),
+                    'stop_loss': exit_plan.get('stop_loss'),
+                    'invalidation_condition': exit_plan.get('invalidation'),
+                    'invalidation_price': exit_plan.get('invalidation_price')
+                }
+
+                self.db.save_exit_plan(exit_plan_data)
+                print(f"\n[Exit Plan - 更新] {asset}の新しいExit Planを保存しました:")
+                print(f"  Profit Target: ${exit_plan.get('profit_target', 'N/A')} (更新)")
+                print(f"  Stop Loss: ${exit_plan.get('stop_loss', 'N/A')} (更新)")
+                print(f"  Invalidation: {exit_plan.get('invalidation', 'N/A')} (更新)")
+
             # ポジションをクローズした場合、Exit Planもキャンセル
-            if action == "close_position" and trade_result.get("status") == "success" and asset:
+            elif action == "close_position" and trade_result.get("status") == "success" and asset:
                 self.exit_monitor.cancel_exit_plan_for_symbol(asset)
 
             # データベースに保存

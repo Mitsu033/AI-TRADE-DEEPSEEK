@@ -16,85 +16,119 @@ class DatabaseManager:
     
     def _init_database(self):
         """データベースとテーブルを初期化"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # 取引履歴テーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS trades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                action TEXT NOT NULL,
-                asset TEXT NOT NULL,
-                price REAL NOT NULL,
-                amount_usd REAL NOT NULL,
-                leverage INTEGER DEFAULT 1,
-                pnl REAL DEFAULT 0,
-                pnl_percentage REAL DEFAULT 0,
-                reasoning TEXT,
-                success INTEGER DEFAULT 1,
-                error_message TEXT
-            )
-        ''')
-        
-        # ポートフォリオスナップショットテーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS portfolio_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                total_value REAL NOT NULL,
-                cash REAL NOT NULL,
-                positions_json TEXT,
-                roi REAL NOT NULL,
-                total_trades INTEGER DEFAULT 0,
-                winning_trades INTEGER DEFAULT 0,
-                losing_trades INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # 市場データテーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS market_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                symbol TEXT NOT NULL,
-                price REAL NOT NULL,
-                volume_24h REAL DEFAULT 0,
-                funding_rate REAL DEFAULT 0
-            )
-        ''')
-        
-        # AI判断テーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ai_decisions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                decision_json TEXT NOT NULL,
-                reasoning TEXT,
-                confidence REAL DEFAULT 0,
-                executed INTEGER DEFAULT 0
-            )
-        ''')
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
 
-        # Exit Planテーブル
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exit_plans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                position_symbol TEXT NOT NULL,
-                entry_price REAL NOT NULL,
-                profit_target REAL,
-                stop_loss REAL,
-                invalidation_condition TEXT,
-                invalidation_price REAL,
-                status TEXT DEFAULT 'active',
-                triggered_at TEXT,
-                trigger_type TEXT
-            )
-        ''')
+            # 既存のテーブル一覧を取得
+            cursor.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table'
+            """)
+            existing_tables = {row[0] for row in cursor.fetchall()}
 
-        conn.commit()
-        conn.close()
+            # 取引履歴テーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS trades (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    asset TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    amount_usd REAL NOT NULL,
+                    leverage INTEGER DEFAULT 1,
+                    pnl REAL DEFAULT 0,
+                    pnl_percentage REAL DEFAULT 0,
+                    reasoning TEXT,
+                    success INTEGER DEFAULT 1,
+                    error_message TEXT
+                )
+            ''')
+
+            # ポートフォリオスナップショットテーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    total_value REAL NOT NULL,
+                    cash REAL NOT NULL,
+                    positions_json TEXT,
+                    roi REAL NOT NULL,
+                    total_trades INTEGER DEFAULT 0,
+                    winning_trades INTEGER DEFAULT 0,
+                    losing_trades INTEGER DEFAULT 0
+                )
+            ''')
+
+            # 市場データテーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS market_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    volume_24h REAL DEFAULT 0,
+                    funding_rate REAL DEFAULT 0
+                )
+            ''')
+
+            # AI判断テーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    reasoning TEXT,
+                    confidence REAL DEFAULT 0,
+                    executed INTEGER DEFAULT 0
+                )
+            ''')
+
+            # Exit Planテーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS exit_plans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    position_symbol TEXT NOT NULL,
+                    entry_price REAL NOT NULL,
+                    profit_target REAL,
+                    stop_loss REAL,
+                    invalidation_condition TEXT,
+                    invalidation_price REAL,
+                    status TEXT DEFAULT 'active',
+                    triggered_at TEXT,
+                    trigger_type TEXT
+                )
+            ''')
+
+            conn.commit()
+
+            # 初期化後のテーブル一覧を取得
+            cursor.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table'
+            """)
+            current_tables = {row[0] for row in cursor.fetchall()}
+
+            conn.close()
+
+            # 初期化完了をログ出力
+            print(f"✅ データベース初期化完了: {self.db_path}")
+            print(f"   既存テーブル数: {len(existing_tables)}")
+            print(f"   現在のテーブル数: {len(current_tables)}")
+
+            # 新規作成されたテーブルがあればログ出力
+            new_tables = current_tables - existing_tables
+            if new_tables:
+                print(f"   📝 新規作成されたテーブル: {', '.join(new_tables)}")
+
+        except sqlite3.Error as e:
+            print(f"❌ データベース初期化エラー: {e}")
+            print(f"   データベースパス: {self.db_path}")
+            raise
+        except Exception as e:
+            print(f"❌ 予期しないエラー: {type(e).__name__} - {e}")
+            raise
     
     def save_trade(self, trade_data: Dict):
         """取引データを保存"""
@@ -268,9 +302,9 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # 総取引数と勝率
+        # 総取引数と勝率（HOLDを除外）
         cursor.execute('''
-            SELECT 
+            SELECT
                 COUNT(*) as total_trades,
                 SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
                 SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
@@ -279,7 +313,7 @@ class DatabaseManager:
                 MAX(pnl) as max_profit,
                 MIN(pnl) as max_loss
             FROM trades
-            WHERE success = 1
+            WHERE success = 1 AND action != 'hold'
         ''')
         
         stats = cursor.fetchone()
@@ -313,18 +347,18 @@ class DatabaseManager:
         }
     
     def get_asset_performance(self, asset: str) -> Dict:
-        """特定資産のパフォーマンスを取得"""
+        """特定資産のパフォーマンスを取得（HOLDを除外）"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute('''
-            SELECT 
+            SELECT
                 COUNT(*) as trades,
                 SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
                 SUM(pnl) as total_pnl,
                 AVG(pnl) as avg_pnl
             FROM trades
-            WHERE asset = ? AND success = 1
+            WHERE asset = ? AND success = 1 AND action != 'hold'
         ''', (asset,))
         
         stats = cursor.fetchone()

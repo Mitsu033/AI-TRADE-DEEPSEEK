@@ -82,15 +82,17 @@ def api_dashboard():
     try:
         current_bot = init_bot()
         current_prices = current_bot.market_fetcher.get_current_prices()
-        
+
         if not current_prices:
             return jsonify({"error": "市場データを取得できませんでした"}), 503
-        
+
         portfolio = current_bot._get_portfolio_status(current_prices)
         stats = current_bot.db.get_performance_stats()
-        
+        trading_status = current_bot.get_trading_status()
+
         return jsonify({
             "status": "running" if current_bot.is_running else "stopped",
+            "trading_status": trading_status,  # 詳細なステータス情報を追加
             "portfolio": {
                 "total_value": portfolio['total_value'],
                 "cash": portfolio['cash'],
@@ -118,12 +120,24 @@ def api_positions():
     try:
         current_bot = init_bot()
         current_prices = current_bot.market_fetcher.get_current_prices()
-        
+
         if not current_prices:
-            return jsonify({"error": "市場データを取得できませんでした"}), 503
-        
+            # データ初期化中の可能性を確認
+            if not current_bot.market_fetcher.is_initialized:
+                return jsonify({
+                    "error": "データ初期化中です。しばらくお待ちください",
+                    "status": "initializing",
+                    "positions": []
+                }), 200
+            else:
+                return jsonify({
+                    "error": "市場データを取得できませんでした",
+                    "status": "no_data",
+                    "positions": []
+                }), 503
+
         portfolio = current_bot._get_portfolio_status(current_prices)
-        
+
         positions = []
         for symbol, pos in portfolio['positions'].items():
             positions.append({
@@ -136,13 +150,20 @@ def api_positions():
                 "pnl_percentage": pos['pnl_percentage'],
                 "leverage": pos['leverage']
             })
-        
+
         return jsonify({
             "positions": positions,
+            "total_positions": len(positions),
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        print(f"❌ /api/positions エラー: {e}")
+        print(traceback.format_exc())
+        return jsonify({
+            "error": f"サーバーエラー: {str(e)}",
+            "positions": []
+        }), 500
 
 @app.route('/api/trades')
 def api_trades():
