@@ -346,29 +346,51 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                     'limit': 100  # 最大100本
                 }
 
-                response = requests.get(url, params=params, timeout=10)
+                # User-Agentヘッダーを追加してレート制限を回避
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
 
-                if response.status_code == 200:
-                    klines = response.json()
+                # レート制限に対応した再試行ロジック
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
 
-                    # キャンドルデータを保存
-                    for kline in klines:
-                        candle = {
-                            'timestamp': kline[0],
-                            'open': float(kline[1]),
-                            'high': float(kline[2]),
-                            'low': float(kline[3]),
-                            'close': float(kline[4]),
-                            'volume': float(kline[5])
-                        }
-                        self.candle_data[symbol].append(candle)
+                        if response.status_code == 200:
+                            klines = response.json()
 
-                    print(f"✅ {symbol}: {len(klines)}本のキャンドルデータを取得")
-                else:
-                    print(f"⚠️ {symbol}: 過去データ取得失敗 (status: {response.status_code})")
+                            # キャンドルデータを保存
+                            for kline in klines:
+                                candle = {
+                                    'timestamp': kline[0],
+                                    'open': float(kline[1]),
+                                    'high': float(kline[2]),
+                                    'low': float(kline[3]),
+                                    'close': float(kline[4]),
+                                    'volume': float(kline[5])
+                                }
+                                self.candle_data[symbol].append(candle)
 
-                # API制限を避けるために少し待機
-                time.sleep(0.2)
+                            print(f"✅ {symbol}: {len(klines)}本のキャンドルデータを取得")
+                            break  # 成功したらループ終了
+
+                        elif response.status_code == 418:
+                            # レート制限エラー - バックオフして再試行
+                            wait_time = (2 ** attempt) * 2  # 2秒, 4秒, 8秒
+                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行 (試行 {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"⚠️ {symbol}: 過去データ取得失敗 (status: {response.status_code})")
+                            break
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+
+                # API制限を避けるために待機（0.2秒 → 1.5秒に延長）
+                time.sleep(1.5)
 
             except Exception as e:
                 print(f"❌ {symbol}の過去データ取得エラー: {e}")
@@ -404,7 +426,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                     'limit': 1
                 }
 
-                response = requests.get(url, params=params, timeout=10)
+                # User-Agentヘッダーを追加
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                response = requests.get(url, params=params, headers=headers, timeout=10)
 
                 if response.status_code == 200:
                     klines = response.json()
@@ -427,8 +454,11 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                             self.candle_data[symbol].pop(0)
 
                         print(f"🔄 {symbol}: 新しいキャンドルを追加 (価格: ${candle['close']:.2f})")
+                elif response.status_code == 418:
+                    print(f"⚠️ {symbol}: レート制限 (418) - 更新をスキップ")
 
-                time.sleep(0.1)
+                # レート制限を避けるために待機（0.1秒 → 1.5秒に延長）
+                time.sleep(1.5)
 
             except Exception as e:
                 print(f"⚠️ {symbol}のキャンドル更新エラー: {e}")
