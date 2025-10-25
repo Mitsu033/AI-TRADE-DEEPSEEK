@@ -32,7 +32,7 @@ def init_bot():
             if bot is None:
                 print("🚀 ボットを初期化中...")
                 bot = SimulationTradingBot(initial_balance=10000.0)
-                bot.trading_interval = 180  # 3分
+                # trading_interval は sim_trading_bot.py の設定（1800秒=30分）を使用
                 print("✅ ボット初期化完了")
     return bot
 

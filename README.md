@@ -43,7 +43,7 @@ pip install requests websocket-client
   },
   "trading": {
     "initial_balance": 10000.0,
-    "trading_interval": 120,
+    "trading_interval": 1800,  // 30分ごと（マルチタイムフレーム戦略最適化）
     "symbols": ["BTC", "ETH", "SOL", "BNB", "DOGE", "XRP"],
     "max_position_size": 0.2,
     "max_leverage": 20

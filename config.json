@@ -7,7 +7,7 @@
   },
   "trading": {
     "initial_balance": 10000.0,
-    "trading_interval": 120,
+    "trading_interval": 1800,
     "symbols": [
       "BTC",
       "ETH",
