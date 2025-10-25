@@ -116,14 +116,15 @@ class SimulationTradingBot:
                 result = self.run_trading_cycle(current_prices)
 
                 # 成功したらエラーカウンターをリセット
-                if result.get('status') != 'error':
+                if result.get('status') in ['success', 'waiting', 'exit_plan_executed']:
                     self.consecutive_errors = 0
-                else:
+                elif result.get('status') == 'error':
                     self.consecutive_errors += 1
                     print(f"⚠️ 連続エラー回数: {self.consecutive_errors}/{self.max_consecutive_errors}")
 
-                # 結果をログ
-                self._log_trade_result(result)
+                # 結果をログ（データ準備中以外）
+                if result.get('status') != 'waiting':
+                    self._log_trade_result(result)
 
                 # 次の取引まで待機（エラーが多い場合は待機時間を延長）
                 wait_time = self.trading_interval
@@ -158,32 +159,89 @@ class SimulationTradingBot:
 
         print("🛑 取引ループを終了しました")
     
+    def _check_data_readiness(self, market_data: Dict) -> Dict:
+        """
+        データ準備状況をチェック
+
+        Returns:
+            {'ready': bool, 'message': str, 'ready_symbols': list, 'not_ready_symbols': list}
+        """
+        ready_symbols = []
+        not_ready_symbols = []
+
+        for symbol, data in market_data.items():
+            # テクニカル指標が計算されているかチェック
+            data_points = data.get('data_points', 0)
+            has_ema = 'ema_20' in data and data['ema_20'] is not None
+            has_rsi = 'rsi_7' in data and data['rsi_7'] is not None
+
+            if has_ema and has_rsi:
+                ready_symbols.append(symbol)
+            else:
+                not_ready_symbols.append({
+                    'symbol': symbol,
+                    'data_points': data_points,
+                    'needed': 20
+                })
+
+        all_ready = len(not_ready_symbols) == 0
+
+        return {
+            'ready': all_ready,
+            'ready_symbols': ready_symbols,
+            'not_ready_symbols': not_ready_symbols,
+            'message': f"準備完了: {len(ready_symbols)}/{len(market_data)} 銘柄"
+        }
+
     def run_trading_cycle(self, market_data: Dict) -> Dict:
         """
         1サイクルの取引を実行
         """
         try:
+            # データ準備状況をチェック
+            data_status = self._check_data_readiness(market_data)
+
+            if not data_status['ready']:
+                print(f"\n⏳ データ準備中: {data_status['message']}")
+                for item in data_status['not_ready_symbols']:
+                    print(f"   {item['symbol']}: {item['data_points']}/{item['needed']} データポイント")
+                print("   ➡️ テクニカル指標の計算が完了するまで待機します...")
+                return {
+                    'status': 'waiting',
+                    'message': 'データ準備中',
+                    'data_status': data_status
+                }
+
+            print(f"\n✅ データ準備完了: 全{len(data_status['ready_symbols'])}銘柄")
+
             # 現在のポートフォリオ状況を取得
             portfolio = self._get_portfolio_status(market_data)
 
-            # Exit Planのチェック（優先実行）
+            # Exit Planのチェック（最優先実行）
             print("\n[Exit Plan Check] アクティブなExit Planをチェック中...")
             exit_actions = self.exit_monitor.check_exit_plans(
                 portfolio.get('positions', {}),
                 market_data
             )
 
-            # Exit Planに基づくクローズ実行
+            # Exit Planに基づくクローズ実行（最優先・厳守）
             if exit_actions:
+                print(f"\n🔴 [Exit Plan 厳守] {len(exit_actions)}件のExit Planを発動します")
+
                 for exit_action in exit_actions:
                     symbol = exit_action['symbol']
                     reason = exit_action['reason']
                     trigger_type = exit_action['trigger_type']
                     plan_id = exit_action['plan_id']
+                    current_price = exit_action.get('current_price', 0)
 
-                    print(f"\n[Exit Plan] {symbol}をクローズ: {reason}")
+                    print(f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    print(f"[Exit Plan 発動] {symbol}")
+                    print(f"  理由: {reason}")
+                    print(f"  現在価格: ${current_price:.2f}")
+                    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-                    # ポジションをクローズ
+                    # ポジションを強制クローズ（Exit Plan厳守）
                     result = self._execute_trade({
                         'action': 'close_position',
                         'asset': symbol
@@ -194,12 +252,24 @@ class SimulationTradingBot:
 
                     # 結果を記録
                     if result.get('status') == 'success':
-                        print(f"  ✅ {symbol}のポジションをクローズしました: {reason}")
+                        print(f"  ✅ {symbol}のポジションをクローズしました")
+                        print(f"  📊 決済理由: {reason}")
+                    else:
+                        print(f"  ❌ {symbol}のクローズに失敗: {result.get('message')}")
 
                 # Exit Plan実行後、ポートフォリオを再取得
                 portfolio = self._get_portfolio_status(market_data)
 
-            # QWEN3に取引判断を依頼
+                # Exit Plan発動時はこのサイクルを終了（AI判断をスキップ）
+                print(f"\n✅ Exit Planを厳守しました。このサイクルを終了します。")
+                return {
+                    'status': 'exit_plan_executed',
+                    'message': f'{len(exit_actions)}件のExit Planを発動',
+                    'exit_actions': exit_actions,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+            # QWEN3に取引判断を依頼（Exit Planが発動しなかった場合のみ）
             print("\n🤖 AI判断を取得中...")
             ai_response = self.qwen3.get_trading_decision(market_data, portfolio)
             

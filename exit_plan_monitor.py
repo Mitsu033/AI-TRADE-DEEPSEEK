@@ -17,6 +17,7 @@ class ExitPlanMonitor:
     def check_exit_plans(self, current_positions: Dict, market_data: Dict) -> List[Dict]:
         """
         全てのアクティブなExit Planをチェックし、条件を満たす場合はクローズアクションを返す
+        【厳守モード】条件を満たした場合は必ず決済する
 
         Args:
             current_positions: 現在のポジション情報 {symbol: {...}}
@@ -33,7 +34,7 @@ class ExitPlanMonitor:
         if not active_plans:
             return actions_to_take
 
-        print(f"\n[Exit Plan Monitor] {len(active_plans)}件のアクティブなExit Planをチェック中...")
+        print(f"\n[Exit Plan Monitor - 厳守モード] {len(active_plans)}件のアクティブなExit Planをチェック中...")
 
         for plan in active_plans:
             symbol = plan['position_symbol']
@@ -46,53 +47,69 @@ class ExitPlanMonitor:
 
             # 市場データがない場合はスキップ
             if symbol not in market_data:
+                print(f"  [{symbol}] 市場データがないため、チェックをスキップ")
                 continue
 
             current_price = market_data[symbol].get('price', 0)
             if current_price == 0:
+                print(f"  [{symbol}] 価格データが無効（0）のため、チェックをスキップ")
                 continue
 
-            # Profit Target チェック
+            entry_price = plan.get('entry_price', 0)
+            position_info = current_positions[symbol]
+
+            print(f"  [{symbol}] 価格: ${current_price:.2f} | エントリー: ${entry_price:.2f}")
+
+            # 優先順位1: Profit Target チェック（利確）
             if plan['profit_target'] and current_price >= plan['profit_target']:
-                print(f"  ✅ [{symbol}] Profit Target到達: ${current_price:.2f} >= ${plan['profit_target']:.2f}")
+                profit_pct = ((current_price - entry_price) / entry_price) * 100
+                print(f"  ✅ [{symbol}] Profit Target到達: ${current_price:.2f} >= ${plan['profit_target']:.2f} (+{profit_pct:.2f}%)")
                 actions_to_take.append({
                     'symbol': symbol,
-                    'reason': f'Profit Target到達: ${plan['profit_target']:.2f}',
+                    'reason': f'Profit Target到達: ${plan['profit_target']:.2f} (+{profit_pct:.2f}%)',
                     'trigger_type': 'profit_target',
                     'plan_id': plan['id'],
-                    'current_price': current_price
+                    'current_price': current_price,
+                    'priority': 1  # 最高優先度
                 })
                 continue  # 1つのプランに対して1つのアクションのみ
 
-            # Stop Loss チェック
+            # 優先順位2: Stop Loss チェック（損切り）- 厳守
             if plan['stop_loss'] and current_price <= plan['stop_loss']:
-                print(f"  🛑 [{symbol}] Stop Loss発動: ${current_price:.2f} <= ${plan['stop_loss']:.2f}")
+                loss_pct = ((current_price - entry_price) / entry_price) * 100
+                print(f"  🛑 [{symbol}] Stop Loss発動（厳守）: ${current_price:.2f} <= ${plan['stop_loss']:.2f} ({loss_pct:.2f}%)")
                 actions_to_take.append({
                     'symbol': symbol,
-                    'reason': f'Stop Loss発動: ${plan['stop_loss']:.2f}',
+                    'reason': f'Stop Loss発動: ${plan['stop_loss']:.2f} ({loss_pct:.2f}%)',
                     'trigger_type': 'stop_loss',
                     'plan_id': plan['id'],
-                    'current_price': current_price
+                    'current_price': current_price,
+                    'priority': 2  # 高優先度
                 })
                 continue
 
-            # Invalidation チェック
+            # 優先順位3: Invalidation チェック（戦略無効化）- 厳守
             if plan['invalidation_price'] and current_price <= plan['invalidation_price']:
-                print(f"  ⚠️ [{symbol}] Invalidation条件発動: ${current_price:.2f} <= ${plan['invalidation_price']:.2f}")
+                loss_pct = ((current_price - entry_price) / entry_price) * 100
+                print(f"  ⚠️ [{symbol}] Invalidation条件発動（厳守）: ${current_price:.2f} <= ${plan['invalidation_price']:.2f} ({loss_pct:.2f}%)")
                 invalidation_text = plan.get('invalidation_condition', f'price below ${plan["invalidation_price"]:.2f}')
                 actions_to_take.append({
                     'symbol': symbol,
-                    'reason': f'Invalidation: {invalidation_text}',
+                    'reason': f'Invalidation: {invalidation_text} ({loss_pct:.2f}%)',
                     'trigger_type': 'invalidation',
                     'plan_id': plan['id'],
-                    'current_price': current_price
+                    'current_price': current_price,
+                    'priority': 3
                 })
                 continue
 
+        # 優先度順にソート（念のため）
+        actions_to_take.sort(key=lambda x: x.get('priority', 99))
+
         if actions_to_take:
-            print(f"\n[Exit Plan Monitor] {len(actions_to_take)}件のポジションをクローズします")
+            print(f"\n[Exit Plan Monitor - 厳守モード] ✅ {len(actions_to_take)}件のポジションを決済します")
         else:
-            print(f"[Exit Plan Monitor] クローズ条件を満たすポジションはありません")
+            print(f"[Exit Plan Monitor - 厳守モード] ✓ クローズ条件を満たすポジションはありません")
 
         return actions_to_take
 
