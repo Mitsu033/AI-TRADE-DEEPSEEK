@@ -319,6 +319,9 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # キャンドルデータの保存（symbol: [candle_data]）
         self.candle_data = {symbol: [] for symbol in symbols}
 
+        # 4時間足キャンドルデータの保存（マーケットレジーム判定用）
+        self.candle_data_4h = {symbol: [] for symbol in symbols}
+
         # 更新管理
         self.update_interval = 180  # 3分 = 180秒
         self.last_candle_update = {}
@@ -329,6 +332,10 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 初期データを取得
         print("📊 過去の市場データを取得中...")
         self._fetch_initial_data()
+
+        # 4時間足データを取得
+        print("📊 4時間足データを取得中（マーケットレジーム判定用）...")
+        self._fetch_4h_initial_data()
 
         # バックグラウンド更新を開始
         self._start_background_update()
@@ -400,6 +407,72 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
         self.is_initialized = True
         print("✅ 初期データ取得完了\n")
+
+    def _fetch_4h_initial_data(self):
+        """
+        4時間足キャンドルデータを取得（マーケットレジーム判定用）
+        MA 50とMA 200を計算するために250本の4時間足を取得
+        """
+        for symbol in self.symbols:
+            try:
+                binance_symbol = f"{symbol}USDT"
+                # 過去250本の4時間足キャンドルを取得
+                url = f"https://api.binance.com/api/v3/klines"
+                params = {
+                    'symbol': binance_symbol,
+                    'interval': '4h',  # 4時間足
+                    'limit': 250  # 200MA計算に必要
+                }
+
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+
+                        if response.status_code == 200:
+                            klines = response.json()
+
+                            # キャンドルデータを保存
+                            for kline in klines:
+                                candle = {
+                                    'timestamp': kline[0],
+                                    'open': float(kline[1]),
+                                    'high': float(kline[2]),
+                                    'low': float(kline[3]),
+                                    'close': float(kline[4]),
+                                    'volume': float(kline[5])
+                                }
+                                self.candle_data_4h[symbol].append(candle)
+
+                            data_count = len(klines)
+                            ma200_ready = "✅" if data_count >= 200 else f"⏳ (あと{200-data_count}本)"
+                            print(f"✅ {symbol}: 4時間足{data_count}本取得 | 200MA計算: {ma200_ready}")
+                            break
+
+                        elif response.status_code == 418:
+                            wait_time = (2 ** attempt) * 2
+                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"⚠️ {symbol}: 4時間足データ取得失敗 (status: {response.status_code})")
+                            break
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+
+                # API制限を避けるために待機
+                time.sleep(1.5)
+
+            except Exception as e:
+                print(f"❌ {symbol}の4時間足データ取得エラー: {e}")
+
+        print("✅ 4時間足データ取得完了\n")
 
     def _start_background_update(self):
         """バックグラウンドで定期的に新しいキャンドルデータを取得"""
@@ -531,21 +604,78 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         result['rsi_14_series'] = self.indicators.calculate_rsi_series(close_prices, 14, 10)
         result['rsi_14'] = result['rsi_14_series'][-1] if result['rsi_14_series'] else None
 
-        # 4時間足コンテキスト（80個の3分データ = 4時間）
-        if len(candles) >= 80:
-            four_hour_closes = close_prices[-80:]
-            four_hour_highs = high_prices[-80:]
-            four_hour_lows = low_prices[-80:]
+        # 4時間足コンテキスト（マーケットレジーム判定用）
+        if symbol in self.candle_data_4h and len(self.candle_data_4h[symbol]) >= 50:
+            candles_4h = self.candle_data_4h[symbol]
+            closes_4h = [c['close'] for c in candles_4h]
+            highs_4h = [c['high'] for c in candles_4h]
+            lows_4h = [c['low'] for c in candles_4h]
 
-            result['ema_20_4h'] = self.indicators.calculate_ema(four_hour_closes, 20)
-            result['ema_50_4h'] = self.indicators.calculate_ema(four_hour_closes, 50)
-            result['macd_4h'] = self.indicators.calculate_macd(four_hour_closes)
-            result['rsi_14_4h'] = self.indicators.calculate_rsi(four_hour_closes, 14)
+            # SMA 50とSMA 200を計算（マーケットレジーム判定用）
+            if len(closes_4h) >= 50:
+                result['ma_50_4h'] = self.indicators.calculate_sma(closes_4h, 50)
+            else:
+                result['ma_50_4h'] = None
 
-            # ATR計算
-            result['atr_14_4h'] = self.indicators.calculate_atr(
-                four_hour_highs, four_hour_lows, four_hour_closes, 14
-            )
+            if len(closes_4h) >= 200:
+                result['ma_200_4h'] = self.indicators.calculate_sma(closes_4h, 200)
+            else:
+                result['ma_200_4h'] = None
+
+            # EMA 20/50を計算
+            result['ema_20_4h'] = self.indicators.calculate_ema(closes_4h, 20)
+            result['ema_50_4h'] = self.indicators.calculate_ema(closes_4h, 50)
+
+            # その他の4時間足指標
+            result['macd_4h'] = self.indicators.calculate_macd(closes_4h)
+            result['rsi_14_4h'] = self.indicators.calculate_rsi(closes_4h, 14)
+            result['atr_14_4h'] = self.indicators.calculate_atr(highs_4h, lows_4h, closes_4h, 14)
+
+            # マーケットレジーム判定
+            ma_50 = result['ma_50_4h']
+            ma_200 = result['ma_200_4h']
+
+            if ma_50 is not None and ma_200 is not None:
+                # 価格と50MA/200MAの位置関係、MAの傾きで判定
+                price_above_50 = current_price > ma_50
+                price_above_200 = current_price > ma_200
+                ma_50_above_200 = ma_50 > ma_200
+
+                # MAの傾きを計算（直近5本の4時間足で判定）
+                if len(closes_4h) >= 55:
+                    ma_50_prev = self.indicators.calculate_sma(closes_4h[:-5], 50)
+                    ma_200_prev = self.indicators.calculate_sma(closes_4h[:-5], 200)
+
+                    ma_50_rising = ma_50 > ma_50_prev if ma_50_prev else False
+                    ma_200_rising = ma_200 > ma_200_prev if ma_200_prev else False
+                else:
+                    # データ不足の場合は簡易判定
+                    ma_50_rising = True if ma_50_above_200 else False
+                    ma_200_rising = True if ma_50_above_200 else False
+
+                # レジーム判定ロジック
+                if price_above_50 and price_above_200 and ma_50_above_200:
+                    # 価格が両方のMAより上で、50MA > 200MA
+                    if ma_50_rising or ma_200_rising:
+                        result['market_regime'] = 'UPTREND'
+                    else:
+                        result['market_regime'] = 'RANGE'  # MAが横ばい
+                elif not price_above_50 and not price_above_200 and not ma_50_above_200:
+                    # 価格が両方のMAより下で、50MA < 200MA
+                    if not ma_50_rising and not ma_200_rising:
+                        result['market_regime'] = 'DOWNTREND'
+                    else:
+                        result['market_regime'] = 'RANGE'  # MAが横ばい
+                else:
+                    # それ以外はレンジ相場
+                    result['market_regime'] = 'RANGE'
+            else:
+                result['market_regime'] = 'CALCULATING'
+        else:
+            # 4時間足データが不足している場合
+            result['ma_50_4h'] = None
+            result['ma_200_4h'] = None
+            result['market_regime'] = 'CALCULATING'
 
         return result
 
