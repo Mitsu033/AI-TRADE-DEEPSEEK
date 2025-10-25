@@ -31,7 +31,7 @@ class QWEN3API:
 
     # デフォルトのAPIキー（開発環境用）
     # 本番環境では環境変数 QWEN3_API_KEY を使用してください
-    DEFAULT_API_KEY = "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"
+    DEFAULT_API_KEY = "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"
 
     def __init__(self, api_key: str = None):
         # 優先順位: 引数 > 環境変数 > デフォルト
