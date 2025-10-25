@@ -111,6 +111,100 @@ class TechnicalIndicators:
 
         return float(atr.iloc[-1])
 
+    @staticmethod
+    def calculate_sma(prices: List[float], period: int) -> Optional[float]:
+        """SMA（単純移動平均）を計算"""
+        if len(prices) < period:
+            return None
+        df = pd.DataFrame({'price': prices})
+        sma = df['price'].rolling(window=period).mean()
+        return float(sma.iloc[-1])
+
+    @staticmethod
+    def calculate_sma_slope(prices: List[float], period: int, lookback: int = 5) -> Optional[float]:
+        """SMAの傾き（slope）を計算
+
+        Args:
+            prices: 価格リスト
+            period: MA期間
+            lookback: 傾き計算用の遡り期間
+
+        Returns:
+            傾き（正=上向き、負=下向き、0付近=横ばい）
+        """
+        if len(prices) < period + lookback:
+            return None
+
+        df = pd.DataFrame({'price': prices})
+        sma = df['price'].rolling(window=period).mean()
+
+        # 最新のSMAと lookback 前のSMAを比較
+        current_sma = float(sma.iloc[-1])
+        past_sma = float(sma.iloc[-(lookback + 1)])
+
+        # 傾きを百分率で返す
+        slope = ((current_sma - past_sma) / past_sma) * 100
+        return slope
+
+    @staticmethod
+    def classify_market_regime(
+        price: float,
+        ma_50: Optional[float],
+        ma_200: Optional[float],
+        ma_50_slope: Optional[float],
+        ma_200_slope: Optional[float]
+    ) -> str:
+        """市場レジーム（トレンド/レンジ）を分類
+
+        Module 1の実装：
+        - UPTREND: 価格が両MA上、MA上向き、50MA > 200MA
+        - DOWNTREND: 価格が両MA下、MA下向き、50MA < 200MA
+        - RANGE: 上記以外
+        - UNCLEAR: データ不足
+
+        Args:
+            price: 現在価格
+            ma_50: 50期間MA
+            ma_200: 200期間MA
+            ma_50_slope: 50MA の傾き
+            ma_200_slope: 200MA の傾き
+
+        Returns:
+            "UPTREND" | "DOWNTREND" | "RANGE" | "UNCLEAR"
+        """
+        # データ不足チェック
+        if ma_50 is None or ma_200 is None or ma_50_slope is None or ma_200_slope is None:
+            return "UNCLEAR"
+
+        # 上昇トレンドの条件
+        uptrend_conditions = [
+            price > ma_50,              # 価格が50MA上
+            price > ma_200,             # 価格が200MA上
+            ma_50 > ma_200,             # ゴールデンクロス状態
+            ma_50_slope > 0.1,          # 50MA が上向き
+            ma_200_slope > 0.05         # 200MA が上向き（緩やか可）
+        ]
+
+        # 下降トレンドの条件
+        downtrend_conditions = [
+            price < ma_50,              # 価格が50MA下
+            price < ma_200,             # 価格が200MA下
+            ma_50 < ma_200,             # デッドクロス状態
+            ma_50_slope < -0.1,         # 50MA が下向き
+            ma_200_slope < -0.05        # 200MA が下向き（緩やか可）
+        ]
+
+        # 上昇トレンド：5条件中4つ以上
+        if sum(uptrend_conditions) >= 4:
+            return "UPTREND"
+
+        # 下降トレンド：5条件中4つ以上
+        if sum(downtrend_conditions) >= 4:
+            return "DOWNTREND"
+
+        # それ以外はレンジ
+        return "RANGE"
+
 
 class MarketDataManager:
     """市場データのリアルタイム管理クラス"""
@@ -319,6 +413,35 @@ class MarketDataManager:
                 result['atr_14_4h'] = self.indicators.calculate_atr(
                     four_hour_prices, four_hour_prices, four_hour_prices, 14
                 )
+
+                # MODULE 1: 市場レジーム識別用の50MA/200MA（長期データが必要）
+                # 全データを使用（最大1000ポイント = 50時間分）
+                all_interval_prices = [d['price'] for d in interval_history]
+
+                # 50MA と 200MA を計算
+                ma_50 = self.indicators.calculate_sma(all_interval_prices, 50)
+                ma_200 = self.indicators.calculate_sma(all_interval_prices, 200)
+
+                result['ma_50_4h'] = ma_50
+                result['ma_200_4h'] = ma_200
+
+                # MA の傾きを計算（5データポイント = 15分）
+                ma_50_slope = self.indicators.calculate_sma_slope(all_interval_prices, 50, 5)
+                ma_200_slope = self.indicators.calculate_sma_slope(all_interval_prices, 200, 5)
+
+                result['ma_50_slope'] = ma_50_slope
+                result['ma_200_slope'] = ma_200_slope
+
+                # 市場レジームを分類
+                market_regime = self.indicators.classify_market_regime(
+                    current_price,
+                    ma_50,
+                    ma_200,
+                    ma_50_slope,
+                    ma_200_slope
+                )
+
+                result['market_regime'] = market_regime
         else:
             # データポイント数を追加（デバッグ用）
             result['data_points'] = len(interval_history)

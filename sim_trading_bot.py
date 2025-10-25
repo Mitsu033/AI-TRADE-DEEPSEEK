@@ -437,7 +437,70 @@ class SimulationTradingBot:
                 "message": str(e),
                 "timestamp": datetime.now().isoformat()
             }
-    
+
+    def _validate_risk_reward_ratio(self, entry_price: float, profit_target: float, stop_loss: float) -> tuple:
+        """MODULE 4: Risk-Reward Ratio (RRR) を検証
+
+        Args:
+            entry_price: エントリー価格
+            profit_target: 利益目標価格
+            stop_loss: 損切り価格
+
+        Returns:
+            (is_valid: bool, rrr: float, message: str)
+        """
+        if not all([entry_price, profit_target, stop_loss]):
+            return False, 0.0, "Exit Plan が不完全です（profit_target, stop_loss, entry_price が必須）"
+
+        # リスクとリワードを計算
+        risk = abs(entry_price - stop_loss)
+        reward = abs(profit_target - entry_price)
+
+        if risk == 0:
+            return False, 0.0, "Stop Loss がエントリー価格と同じです"
+
+        rrr = reward / risk
+
+        # RRR >= 2.0 が必須条件
+        if rrr < 2.0:
+            return False, rrr, f"RRR {rrr:.2f} < 2.0 (必須条件未達成)"
+
+        return True, rrr, f"RRR {rrr:.2f} ✓"
+
+    def _validate_confluence(self, decision: Dict) -> tuple:
+        """MODULE 3: コンフルエンス（複数指標の一致）を検証
+
+        Args:
+            decision: AI判断結果
+
+        Returns:
+            (is_valid: bool, score: int, message: str)
+        """
+        confluence_score = decision.get("confluence_score", 0)
+
+        # confluence_score >= 2 が必須条件
+        if confluence_score < 2:
+            return False, confluence_score, f"Confluence Score {confluence_score} < 2 (最低2つの指標一致が必要)"
+
+        return True, confluence_score, f"Confluence Score {confluence_score} ✓"
+
+    def _validate_market_regime(self, decision: Dict) -> tuple:
+        """MODULE 1: 市場レジームが明確かどうかを検証
+
+        Args:
+            decision: AI判断結果
+
+        Returns:
+            (is_valid: bool, regime: str, message: str)
+        """
+        market_regime = decision.get("market_regime", "UNCLEAR")
+
+        # UNCLEAR の場合は取引不可
+        if market_regime == "UNCLEAR":
+            return False, market_regime, "市場レジームが不明確です（データ不足またはレンジ相場の可能性）"
+
+        return True, market_regime, f"Market Regime: {market_regime} ✓"
+
     def _execute_trade(self, decision: Dict, market_data: Dict) -> Dict:
         """取引を実行（シミュレーション）"""
         action = decision.get("action", "hold").lower()
@@ -487,6 +550,51 @@ class SimulationTradingBot:
             }
 
         current_price = market_data[asset]['price']
+
+        # 新規エントリー前の5モジュール検証
+        if action in ["open_long", "buy", "open_short", "sell"]:
+            print("\n" + "="*60)
+            print("📋 5-MODULE FRAMEWORK VALIDATION")
+            print("="*60)
+
+            # MODULE 1: 市場レジーム検証
+            regime_valid, regime, regime_msg = self._validate_market_regime(decision)
+            print(f"MODULE 1 (Market Regime): {regime_msg}")
+            if not regime_valid:
+                return {
+                    "status": "failed",
+                    "reason": f"MODULE 1 失敗: {regime_msg}"
+                }
+
+            # MODULE 3: コンフルエンス検証
+            confluence_valid, conf_score, conf_msg = self._validate_confluence(decision)
+            print(f"MODULE 3 (Confluence): {conf_msg}")
+            if not confluence_valid:
+                return {
+                    "status": "failed",
+                    "reason": f"MODULE 3 失敗: {conf_msg}"
+                }
+
+            # MODULE 4: RRR検証（Exit Planが必要）
+            exit_plan = decision.get("exit_plan", {})
+            profit_target = exit_plan.get("profit_target")
+            stop_loss = exit_plan.get("stop_loss")
+
+            rrr_valid, rrr, rrr_msg = self._validate_risk_reward_ratio(
+                current_price,
+                profit_target,
+                stop_loss
+            )
+            print(f"MODULE 4 (Risk-Reward): {rrr_msg}")
+            if not rrr_valid:
+                return {
+                    "status": "failed",
+                    "reason": f"MODULE 4 失敗: {rrr_msg}"
+                }
+
+            print("="*60)
+            print("✅ ALL MODULES PASSED - Executing trade")
+            print("="*60 + "\n")
 
         # open_long または buy
         if action in ["open_long", "buy"]:
