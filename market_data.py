@@ -265,6 +265,138 @@ class TechnicalIndicators:
         }
 
     @staticmethod
+    def analyze_price_structure(
+        highs: List[float],
+        lows: List[float],
+        closes: List[float],
+        lookback: int = 50
+    ) -> Dict:
+        """
+        価格構造を分析（Higher Highs/Lower Lows/Higher Lows/Lower Highs検出）
+
+        Args:
+            highs: 高値リスト
+            lows: 安値リスト
+            closes: 終値リスト
+            lookback: 遡る期間
+
+        Returns:
+            {
+                'structure': 'UPTREND' | 'DOWNTREND' | 'RANGE',
+                'pattern': 'HH+HL' | 'LL+LH' | 'MIXED',
+                'trend_strength': 0-100 (強度スコア),
+                'swing_highs': [(index, price), ...],
+                'swing_lows': [(index, price), ...],
+                'hh_count': int,  # Higher Highs count
+                'll_count': int,  # Lower Lows count
+                'hl_count': int,  # Higher Lows count
+                'lh_count': int   # Lower Highs count
+            }
+        """
+        if len(highs) < lookback or len(lows) < lookback or len(closes) < lookback:
+            return {
+                'structure': 'UNCLEAR',
+                'pattern': 'INSUFFICIENT_DATA',
+                'trend_strength': 0,
+                'swing_highs': [],
+                'swing_lows': [],
+                'hh_count': 0,
+                'll_count': 0,
+                'hl_count': 0,
+                'lh_count': 0
+            }
+
+        # 直近lookback本のデータを使用
+        recent_highs = highs[-lookback:]
+        recent_lows = lows[-lookback:]
+        recent_closes = closes[-lookback:]
+
+        # スイングハイとスイングローを検出（前後3本より高い/低い）
+        swing_highs = []
+        swing_lows = []
+
+        for i in range(3, len(recent_highs) - 3):
+            # スイングハイ: 前後3本より高い
+            if (recent_highs[i] > recent_highs[i-1] and
+                recent_highs[i] > recent_highs[i-2] and
+                recent_highs[i] > recent_highs[i-3] and
+                recent_highs[i] > recent_highs[i+1] and
+                recent_highs[i] > recent_highs[i+2] and
+                recent_highs[i] > recent_highs[i+3]):
+                swing_highs.append((i, recent_highs[i]))
+
+            # スイングロー: 前後3本より低い
+            if (recent_lows[i] < recent_lows[i-1] and
+                recent_lows[i] < recent_lows[i-2] and
+                recent_lows[i] < recent_lows[i-3] and
+                recent_lows[i] < recent_lows[i+1] and
+                recent_lows[i] < recent_lows[i+2] and
+                recent_lows[i] < recent_lows[i+3]):
+                swing_lows.append((i, recent_lows[i]))
+
+        # Higher Highs (HH) / Lower Highs (LH) をカウント
+        hh_count = 0
+        lh_count = 0
+        for i in range(1, len(swing_highs)):
+            if swing_highs[i][1] > swing_highs[i-1][1]:
+                hh_count += 1
+            elif swing_highs[i][1] < swing_highs[i-1][1]:
+                lh_count += 1
+
+        # Higher Lows (HL) / Lower Lows (LL) をカウント
+        hl_count = 0
+        ll_count = 0
+        for i in range(1, len(swing_lows)):
+            if swing_lows[i][1] > swing_lows[i-1][1]:
+                hl_count += 1
+            elif swing_lows[i][1] < swing_lows[i-1][1]:
+                ll_count += 1
+
+        # 価格構造パターンを判定
+        pattern = 'MIXED'
+        structure = 'RANGE'
+
+        # 上昇トレンド判定: HH + HL が優勢
+        if hh_count > 0 and hl_count > 0 and (hh_count + hl_count) > (lh_count + ll_count):
+            pattern = 'HH+HL'
+            structure = 'UPTREND'
+
+        # 下降トレンド判定: LL + LH が優勢
+        elif ll_count > 0 and lh_count > 0 and (ll_count + lh_count) > (hh_count + hl_count):
+            pattern = 'LL+LH'
+            structure = 'DOWNTREND'
+
+        # トレンド強度を計算（0-100）
+        total_swings = hh_count + lh_count + hl_count + ll_count
+
+        if total_swings == 0:
+            trend_strength = 0
+        else:
+            if structure == 'UPTREND':
+                # 上昇トレンド強度: (HH + HL) の割合 × 一貫性
+                consistency = (hh_count + hl_count) / total_swings
+                trend_strength = min(100, int(consistency * 100))
+            elif structure == 'DOWNTREND':
+                # 下降トレンド強度: (LL + LH) の割合 × 一貫性
+                consistency = (ll_count + lh_count) / total_swings
+                trend_strength = min(100, int(consistency * 100))
+            else:
+                # レンジの場合は低い強度
+                trend_strength = max(0, 50 - abs(hh_count - ll_count) * 5)
+
+        return {
+            'structure': structure,
+            'pattern': pattern,
+            'trend_strength': trend_strength,
+            'swing_highs': swing_highs[-5:],  # 直近5つのみ返す
+            'swing_lows': swing_lows[-5:],
+            'hh_count': hh_count,
+            'll_count': ll_count,
+            'hl_count': hl_count,
+            'lh_count': lh_count
+        }
+
+    @staticmethod
     def classify_market_regime(
         price: float,
         ma_50: Optional[float],

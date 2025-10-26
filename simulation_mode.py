@@ -1049,6 +1049,35 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             result['nearest_support'] = None
             result['nearest_resistance'] = None
 
+        # 価格構造分析（1時間足データから）
+        if symbol in self.candle_data_1h and len(self.candle_data_1h[symbol]) >= 50:
+            candles_1h = self.candle_data_1h[symbol]
+            highs_1h = [c['high'] for c in candles_1h]
+            lows_1h = [c['low'] for c in candles_1h]
+            closes_1h = [c['close'] for c in candles_1h]
+
+            # 価格構造を分析
+            structure_data = self.indicators.analyze_price_structure(
+                highs_1h, lows_1h, closes_1h, lookback=50
+            )
+
+            result['price_structure'] = structure_data['structure']
+            result['structure_pattern'] = structure_data['pattern']
+            result['trend_strength'] = structure_data['trend_strength']
+            result['hh_count'] = structure_data['hh_count']
+            result['ll_count'] = structure_data['ll_count']
+            result['hl_count'] = structure_data['hl_count']
+            result['lh_count'] = structure_data['lh_count']
+        else:
+            # 1時間足データが不足
+            result['price_structure'] = 'UNCLEAR'
+            result['structure_pattern'] = 'INSUFFICIENT_DATA'
+            result['trend_strength'] = 0
+            result['hh_count'] = 0
+            result['ll_count'] = 0
+            result['hl_count'] = 0
+            result['lh_count'] = 0
+
         return result
 
     def get_current_prices(self) -> Dict:

@@ -340,6 +340,49 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
             prompt += f"""
     - Use: Plan entry/exit points and set stop-loss/take-profit levels"""
 
+        # 価格構造分析（Price Structure Analysis from 1H timeframe）
+        price_structure = data.get('price_structure')
+        structure_pattern = data.get('structure_pattern')
+        trend_strength = data.get('trend_strength', 0)
+        hh_count = data.get('hh_count', 0)
+        ll_count = data.get('ll_count', 0)
+        hl_count = data.get('hl_count', 0)
+        lh_count = data.get('lh_count', 0)
+
+        if price_structure and price_structure != 'UNCLEAR':
+            prompt += f"""
+
+  Price Structure Analysis (1H timeframe):
+    - Structure: {price_structure}
+    - Pattern: {structure_pattern}
+    - Trend Strength: {trend_strength}/100"""
+
+            # パターン詳細を表示
+            if structure_pattern == 'HH+HL':
+                prompt += f"""
+    - Higher Highs: {hh_count} | Higher Lows: {hl_count}
+    - Interpretation: Strong uptrend with consistent higher highs and higher lows"""
+            elif structure_pattern == 'LL+LH':
+                prompt += f"""
+    - Lower Lows: {ll_count} | Lower Highs: {lh_count}
+    - Interpretation: Strong downtrend with consistent lower lows and lower highs"""
+            else:
+                prompt += f"""
+    - HH: {hh_count} | HL: {hl_count} | LH: {lh_count} | LL: {ll_count}
+    - Interpretation: Mixed structure, possibly ranging or trend transition"""
+
+            # トレンド強度の解釈
+            if trend_strength >= 70:
+                strength_desc = "VERY STRONG - High conviction trades recommended"
+            elif trend_strength >= 50:
+                strength_desc = "MODERATE - Proceed with caution"
+            else:
+                strength_desc = "WEAK - Consider waiting for clearer structure"
+
+            prompt += f"""
+    - Strength Assessment: {strength_desc}
+    - Use: Confirm trend direction and assess trade quality"""
+
         # MODULE 4: Risk Management Data
         atr_14_4h = data.get('atr_14_4h')
         if atr_14_4h is not None:
