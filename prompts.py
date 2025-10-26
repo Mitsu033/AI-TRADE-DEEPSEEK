@@ -284,7 +284,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
         if rsi_7 is not None:
                 prompt += f"""
     - RSI (7-period): {rsi_7:.2f}"""
-            if rsi_14 is not None:
+        if rsi_14 is not None:
                 prompt += f"""
     - RSI (14-period): {rsi_14:.2f}"""
 
@@ -386,7 +386,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 strength_desc = "VERY STRONG - High conviction trades recommended"
             elif trend_strength >= 50:
                 strength_desc = "MODERATE - Proceed with caution"
-                else:
+            else:
                 strength_desc = "WEAK - Consider waiting for clearer structure"
 
             prompt += f"""
