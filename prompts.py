@@ -218,6 +218,45 @@ MODULE 1 - MARKET REGIME:"""
   Regime Classification: {market_regime}
 """
 
+        # MODULE 2: Strategy Selection (レジーム分類に基づいた戦略推奨)
+        if market_regime == 'UPTREND':
+            strategy_recommendation = "TREND-FOLLOWING (Long Bias)"
+            strategy_guidance = "Look for pullbacks to 50MA or 20EMA for long entries"
+        elif market_regime == 'DOWNTREND':
+            strategy_recommendation = "TREND-FOLLOWING (Short Bias)"
+            strategy_guidance = "Look for rallies to 50MA or 20EMA for short entries"
+        elif market_regime == 'RANGE':
+            strategy_recommendation = "MEAN-REVERSION"
+            strategy_guidance = "Trade bounces from range boundaries (support/resistance)"
+        else:
+            strategy_recommendation = "WAIT (Regime Unclear)"
+            strategy_guidance = "Do not enter new positions until regime is clear"
+
+        prompt += f"""
+MODULE 2 - STRATEGY SELECTION:
+  Market Regime: {market_regime}
+  Recommended Strategy: {strategy_recommendation}
+  Guidance: {strategy_guidance}
+"""
+
+        # 1時間足のトレンド情報を取得
+        trend_1h = data.get('trend_1h', 'CALCULATING')
+        ema_20_1h = data.get('ema_20_1h')
+        ema_50_1h = data.get('ema_50_1h')
+
+        if ema_20_1h is not None and ema_50_1h is not None:
+            prompt += f"""
+  1H Timeframe Trend Direction:
+    - 20-period EMA: ${ema_20_1h:.2f}
+    - 50-period EMA: ${ema_50_1h:.2f}
+    - Trend Direction: {trend_1h}
+    - Price vs 20EMA (1h): {((current_price - ema_20_1h) / ema_20_1h * 100):+.2f}%
+"""
+        else:
+            prompt += f"""
+  1H Timeframe: Calculating (need more data)
+"""
+
         prompt += f"""
 MODULE 3 - CONFLUENCE INDICATORS:"""
 

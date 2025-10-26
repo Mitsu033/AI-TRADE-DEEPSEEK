@@ -322,6 +322,9 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 4時間足キャンドルデータの保存（マーケットレジーム判定用）
         self.candle_data_4h = {symbol: [] for symbol in symbols}
 
+        # 1時間足キャンドルデータの保存（戦略方向判定用）
+        self.candle_data_1h = {symbol: [] for symbol in symbols}
+
         # 更新管理
         self.update_interval = 180  # 3分 = 180秒
         self.last_candle_update = {}
@@ -336,6 +339,10 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 4時間足データを取得
         print("📊 4時間足データを取得中（マーケットレジーム判定用）...")
         self._fetch_4h_initial_data()
+
+        # 1時間足データを取得
+        print("📊 1時間足データを取得中（戦略方向判定用）...")
+        self._fetch_1h_initial_data()
 
         # バックグラウンド更新を開始
         self._start_background_update()
@@ -473,6 +480,71 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                 print(f"❌ {symbol}の4時間足データ取得エラー: {e}")
 
         print("✅ 4時間足データ取得完了\n")
+
+    def _fetch_1h_initial_data(self):
+        """
+        1時間足キャンドルデータを取得（戦略方向判定用）
+        EMA 20/50、MACD、RSIを計算するために100本の1時間足を取得
+        """
+        for symbol in self.symbols:
+            try:
+                binance_symbol = f"{symbol}USDT"
+                # 過去100本の1時間足キャンドルを取得
+                url = f"https://api.binance.com/api/v3/klines"
+                params = {
+                    'symbol': binance_symbol,
+                    'interval': '1h',  # 1時間足
+                    'limit': 100  # EMA 50計算に十分
+                }
+
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+
+                        if response.status_code == 200:
+                            klines = response.json()
+
+                            # キャンドルデータを保存
+                            for kline in klines:
+                                candle = {
+                                    'timestamp': kline[0],
+                                    'open': float(kline[1]),
+                                    'high': float(kline[2]),
+                                    'low': float(kline[3]),
+                                    'close': float(kline[4]),
+                                    'volume': float(kline[5])
+                                }
+                                self.candle_data_1h[symbol].append(candle)
+
+                            data_count = len(klines)
+                            print(f"✅ {symbol}: 1時間足{data_count}本取得")
+                            break
+
+                        elif response.status_code == 418:
+                            wait_time = (2 ** attempt) * 2
+                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"⚠️ {symbol}: 1時間足データ取得失敗 (status: {response.status_code})")
+                            break
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+
+                # API制限を避けるために待機
+                time.sleep(1.5)
+
+            except Exception as e:
+                print(f"❌ {symbol}の1時間足データ取得エラー: {e}")
+
+        print("✅ 1時間足データ取得完了\n")
 
     def _start_background_update(self):
         """バックグラウンドで定期的に新しいキャンドルデータを取得"""
@@ -676,6 +748,45 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             result['ma_50_4h'] = None
             result['ma_200_4h'] = None
             result['market_regime'] = 'CALCULATING'
+
+        # 1時間足コンテキスト（戦略方向判定用）
+        if symbol in self.candle_data_1h and len(self.candle_data_1h[symbol]) >= 20:
+            candles_1h = self.candle_data_1h[symbol]
+            closes_1h = [c['close'] for c in candles_1h]
+            highs_1h = [c['high'] for c in candles_1h]
+            lows_1h = [c['low'] for c in candles_1h]
+
+            # EMA 20/50を計算（戦略方向用）
+            result['ema_20_1h'] = self.indicators.calculate_ema(closes_1h, 20)
+            if len(closes_1h) >= 50:
+                result['ema_50_1h'] = self.indicators.calculate_ema(closes_1h, 50)
+            else:
+                result['ema_50_1h'] = None
+
+            # MACD (1時間足)
+            result['macd_1h'] = self.indicators.calculate_macd(closes_1h)
+
+            # RSI 14 (1時間足)
+            result['rsi_14_1h'] = self.indicators.calculate_rsi(closes_1h, 14)
+
+            # 1時間足のトレンド方向を判定
+            ema_20_1h = result['ema_20_1h']
+            ema_50_1h = result['ema_50_1h']
+
+            if ema_20_1h is not None and ema_50_1h is not None:
+                if ema_20_1h > ema_50_1h:
+                    result['trend_1h'] = 'BULLISH'
+                elif ema_20_1h < ema_50_1h:
+                    result['trend_1h'] = 'BEARISH'
+                else:
+                    result['trend_1h'] = 'NEUTRAL'
+            else:
+                result['trend_1h'] = 'CALCULATING'
+        else:
+            # 1時間足データが不足
+            result['ema_20_1h'] = None
+            result['ema_50_1h'] = None
+            result['trend_1h'] = 'CALCULATING'
 
         return result
 
