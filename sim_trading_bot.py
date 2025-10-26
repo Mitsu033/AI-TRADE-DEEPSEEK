@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict
 
 from qwen3_api import QWEN3API
+from time_utils import now_jst
 from simulation_mode import SimulationExchange, MarketDataFetcherEnhanced
 from database import DatabaseManager
 from exit_plan_monitor import ExitPlanMonitor
@@ -132,7 +133,7 @@ class SimulationTradingBot:
         while self.is_running:
             try:
                 print(f"\n{'='*60}")
-                print(f"🔄 取引サイクル実行中... [{datetime.now().strftime('%H:%M:%S')}]")
+                print(f"🔄 取引サイクル実行中... [{now_jst().strftime('%H:%M:%S')}]")
                 print(f"{'='*60}")
 
                 # 現在の市場価格を取得
@@ -305,7 +306,7 @@ class SimulationTradingBot:
                     'status': 'exit_plan_executed',
                     'message': f'{len(exit_actions)}件のExit Planを発動',
                     'exit_actions': exit_actions,
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': now_jst().isoformat()
                 }
 
             # アクティブなExit Planを取得（AIに既存のプランを伝える）
@@ -329,7 +330,7 @@ class SimulationTradingBot:
                     "status": "error",
                     "message": "AI判断の取得に失敗",
                     "error": ai_response.get("error"),
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": now_jst().isoformat()
                 }
             
             # 取引を実行
@@ -394,7 +395,7 @@ class SimulationTradingBot:
             # データベースに保存
             if trade_result.get("status") == "success":
                 trade_data = {
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": now_jst().isoformat(),
                     "action": decision.get("action"),
                     "asset": decision.get("asset"),
                     "price": market_data.get(decision.get("asset"), {}).get('price', 0),
@@ -420,11 +421,11 @@ class SimulationTradingBot:
             self.db.save_ai_decision(decision, ai_response.get("reasoning", ""), 
                                     trade_result.get("status") == "success")
             
-            self.last_trade_time = datetime.now()
+            self.last_trade_time = now_jst()
             
             return {
                 "status": "completed",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now_jst().isoformat(),
                 "ai_decision": decision,
                 "ai_reasoning": ai_response["reasoning"],
                 "trade_result": trade_result,
@@ -435,7 +436,7 @@ class SimulationTradingBot:
             return {
                 "status": "error",
                 "message": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": now_jst().isoformat()
             }
 
     def _execute_trade(self, decision: Dict, market_data: Dict) -> Dict:
@@ -680,7 +681,7 @@ class SimulationTradingBot:
         current_prices = self.market_fetcher.get_current_prices()
         
         report = {
-            "report_generated_at": datetime.now().isoformat(),
+            "report_generated_at": now_jst().isoformat(),
             "mode": "SIMULATION",
             "bot_info": {
                 "status": "running" if self.is_running else "stopped",
