@@ -96,18 +96,18 @@ def create_trading_prompt(
         Generated prompt string
     """
     
-    # 経過時間を計算
+    # Calculate elapsed time
     elapsed_minutes = int((datetime.now() - start_time).total_seconds() / 60)
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # ポートフォリオ情報を抽出
+    # Extract portfolio information
     total_value = portfolio.get('total_value', 0)
     cash = portfolio.get('cash', 0)
     initial_balance = portfolio.get('initial_balance', 10000)
     roi = portfolio.get('roi', 0)
     positions = portfolio.get('positions', {})
 
-    # プロンプトを構築
+    # Build prompt
     prompt = f"""It has been {elapsed_minutes} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times. Below, we are providing you with a variety of state data, price data, and predictive signals so you can discover alpha. Below that is your current account information, value, performance, positions, etc.
 
 ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
@@ -115,20 +115,20 @@ ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
 CURRENT MARKET STATE FOR ALL COINS
 """
 
-    # 各コインの市場データを追加
+    # Add market data for each coin
     for symbol, data in market_data.items():
         current_price = data.get('price', 0)
         high_24h = data.get('high_24h', current_price)
         low_24h = data.get('low_24h', current_price)
         change_24h = data.get('change_24h', 0)
 
-        # テクニカル指標の取得
+        # Get technical indicators
         ema_20 = data.get('ema_20')
         macd = data.get('macd')
         rsi_7 = data.get('rsi_7')
         rsi_14 = data.get('rsi_14')
 
-        # マルチタイムフレームデータ
+        # Get multi-timeframe data
         ma_50_4h = data.get('ma_50_4h')
         ma_200_4h = data.get('ma_200_4h')
         market_regime = data.get('market_regime', 'CALCULATING')
@@ -157,7 +157,7 @@ MODULE 1 - MARKET REGIME:"""
   Regime Classification: {market_regime}
 """
 
-        # MODULE 2: Strategy Selection (レジーム分類に基づいた戦略推奨)
+        # MODULE 2: Strategy Selection
         if market_regime == 'UPTREND':
             strategy_recommendation = "TREND-FOLLOWING (Long Bias)"
             strategy_guidance = "Look for pullbacks to 50MA or 20EMA for long entries"
@@ -178,7 +178,7 @@ MODULE 2 - STRATEGY SELECTION:
   Guidance: {strategy_guidance}
 """
 
-        # 1時間足のトレンド情報を取得
+        # Get 1H timeframe trend information
         trend_1h = data.get('trend_1h', 'CALCULATING')
         ema_20_1h = data.get('ema_20_1h')
         ema_50_1h = data.get('ema_50_1h')
@@ -217,7 +217,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 prompt += f"""
     - RSI (14-period): {rsi_14:.2f}"""
 
-        # 15分足のエントリータイミング情報
+        # Get 15m timeframe entry timing information
         ema_20_15m = data.get('ema_20_15m')
         macd_15m = data.get('macd_15m')
         rsi_14_15m = data.get('rsi_14_15m')
@@ -241,7 +241,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
     - Momentum: {momentum_15m}
     - Use: Fine-tune entry timing within 1h trend direction"""
 
-        # 支持線/抵抗線（Key Price Levels）
+        # Get Support/Resistance levels (Key Price Levels)
         nearest_support = data.get('nearest_support')
         nearest_resistance = data.get('nearest_resistance')
         support_levels = data.get('support_levels', [])
@@ -257,7 +257,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 prompt += f"""
     - Nearest Support: ${nearest_support:.2f} ({distance_pct:.2f}% below current)"""
 
-                # 追加の支持線（最大3つ）
+                # Additional support levels (max 3)
                 if len(support_levels) > 1:
                     other_supports = [s for s in support_levels if s[0] != nearest_support][:2]
                     for price, strength, dist in other_supports:
@@ -269,7 +269,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 prompt += f"""
     - Nearest Resistance: ${nearest_resistance:.2f} ({distance_pct:.2f}% above current)"""
 
-                # 追加の抵抗線（最大3つ）
+                # Additional resistance levels (max 3)
                 if len(resistance_levels) > 1:
                     other_resistances = [r for r in resistance_levels if r[0] != nearest_resistance][:2]
                     for price, strength, dist in other_resistances:
@@ -279,7 +279,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
             prompt += f"""
     - Use: Plan entry/exit points and set stop-loss/take-profit levels"""
 
-        # 価格構造分析（Price Structure Analysis from 1H timeframe）
+        # Price Structure Analysis (from 1H timeframe)
         price_structure = data.get('price_structure')
         structure_pattern = data.get('structure_pattern')
         trend_strength = data.get('trend_strength', 0)
@@ -296,7 +296,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
     - Pattern: {structure_pattern}
     - Trend Strength: {trend_strength}/100"""
 
-            # パターン詳細を表示
+            # Display pattern details
             if structure_pattern == 'HH+HL':
                 prompt += f"""
     - Higher Highs: {hh_count} | Higher Lows: {hl_count}
@@ -310,7 +310,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
     - HH: {hh_count} | HL: {hl_count} | LH: {lh_count} | LL: {ll_count}
     - Interpretation: Mixed structure, possibly ranging or trend transition"""
 
-            # トレンド強度の解釈
+            # Interpret trend strength
             if trend_strength >= 70:
                 strength_desc = "VERY STRONG - High conviction trades recommended"
             elif trend_strength >= 50:
@@ -334,7 +334,7 @@ MODULE 4 - RISK MANAGEMENT DATA:
 
         prompt += "\n"
 
-        # 3分足の超短期トレンド情報
+        # Get 3m timeframe ultra-short-term trend information
         ema_20_3m = data.get('ema_20_3m')
         macd_3m = data.get('macd_3m')
         rsi_7_3m = data.get('rsi_7_3m')
@@ -360,7 +360,7 @@ MODULE 4 - RISK MANAGEMENT DATA:
 """
 
 
-    # アカウント情報を追加
+    # Add account information
     prompt += f"""
 HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE
 
@@ -373,7 +373,7 @@ Current Account Value: {total_value:.2f}
 Initial Balance: {initial_balance:.2f}
 """
 
-    # ポジション情報を追加（Exit Plan付き）
+    # Add position information (with Exit Plans)
     if positions:
         prompt += "\nCurrent live positions & performance:\n"
         for symbol, pos in positions.items():
@@ -388,7 +388,7 @@ Initial Balance: {initial_balance:.2f}
             prompt += f"""
 {symbol}: entry_price=${avg_price:.2f}, current_price=${current_price:.2f}, unrealized_pnl=${pnl:+.2f} ({pnl_pct:+.2f}%), leverage={leverage}x, holding_time={holding_time}"""
 
-            # 既存のExit Planがあれば表示
+            # Display existing Exit Plan if available
             if exit_plans and symbol in exit_plans:
                 plan = exit_plans[symbol]
                 prompt += f"""
@@ -401,7 +401,7 @@ Initial Balance: {initial_balance:.2f}
     else:
         prompt += "\nNo open positions currently.\n"
 
-    # 取引判断の指示
+    # Trading decision instructions
     prompt += f"""
 
 ═══════════════════════════════════════════════════════════════════
