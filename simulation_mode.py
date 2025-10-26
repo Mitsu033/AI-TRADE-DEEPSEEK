@@ -325,9 +325,13 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 1時間足キャンドルデータの保存（戦略方向判定用）
         self.candle_data_1h = {symbol: [] for symbol in symbols}
 
+        # 15分足キャンドルデータの保存（エントリータイミング判定用）
+        self.candle_data_15m = {symbol: [] for symbol in symbols}
+
         # 更新管理
         self.update_interval = 180  # 3分 = 180秒
         self.last_candle_update = {}
+        self.last_15m_update = {}  # 15分足の最終更新時刻
         self.last_1h_update = {}  # 1時間足の最終更新時刻
         self.last_4h_update = {}  # 4時間足の最終更新時刻
         self.is_initialized = False
@@ -345,6 +349,10 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 1時間足データを取得
         print("📊 1時間足データを取得中（戦略方向判定用）...")
         self._fetch_1h_initial_data()
+
+        # 15分足データを取得
+        print("📊 15分足データを取得中（エントリータイミング判定用）...")
+        self._fetch_15m_initial_data()
 
         # バックグラウンド更新を開始
         self._start_background_update()
@@ -558,6 +566,76 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
         print("✅ 1時間足データ取得完了\n")
 
+    def _fetch_15m_initial_data(self):
+        """
+        15分足キャンドルデータを取得（エントリータイミング判定用）
+        EMA 20、MACD、RSIを計算するために60本の15分足を取得
+        """
+        for symbol in self.symbols:
+            try:
+                binance_symbol = f"{symbol}USDT"
+                # 過去60本の15分足キャンドルを取得（15時間分）
+                url = f"https://api.binance.com/api/v3/klines"
+                params = {
+                    'symbol': binance_symbol,
+                    'interval': '15m',  # 15分足
+                    'limit': 60  # EMA 20計算に十分
+                }
+
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+
+                        if response.status_code == 200:
+                            klines = response.json()
+
+                            # キャンドルデータを保存
+                            for kline in klines:
+                                candle = {
+                                    'timestamp': kline[0],
+                                    'open': float(kline[1]),
+                                    'high': float(kline[2]),
+                                    'low': float(kline[3]),
+                                    'close': float(kline[4]),
+                                    'volume': float(kline[5])
+                                }
+                                self.candle_data_15m[symbol].append(candle)
+
+                            data_count = len(klines)
+                            print(f"✅ {symbol}: 15分足{data_count}本取得")
+
+                            # 最後のキャンドルのタイムスタンプを記録
+                            if klines:
+                                self.last_15m_update[symbol] = klines[-1][0]  # タイムスタンプ
+
+                            break
+
+                        elif response.status_code == 418:
+                            wait_time = (2 ** attempt) * 2
+                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"⚠️ {symbol}: 15分足データ取得失敗 (status: {response.status_code})")
+                            break
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+
+                # API制限を避けるために待機
+                time.sleep(1.5)
+
+            except Exception as e:
+                print(f"❌ {symbol}の15分足データ取得エラー: {e}")
+
+        print("✅ 15分足データ取得完了\n")
+
     def _start_background_update(self):
         """バックグラウンドで定期的に新しいキャンドルデータを取得"""
         self.running = True
@@ -652,6 +730,44 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                                     self.candle_data_1h[symbol].pop(0)
 
                                 print(f"🕐 {symbol}: 1時間足更新 (${candle_1h['close']:.2f}, 保持: {len(self.candle_data_1h[symbol])}本)")
+
+                # ===== 15分足の更新（15分ごと） =====
+                last_15m = self.last_15m_update.get(symbol, 0)
+                time_since_15m = (current_time_ms - last_15m) / 1000  # 秒に変換
+
+                if time_since_15m >= 900:  # 15分以上経過
+                    params_15m = {
+                        'symbol': binance_symbol,
+                        'interval': '15m',
+                        'limit': 1
+                    }
+
+                    response = requests.get(url, params=params_15m, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        klines = response.json()
+                        if klines:
+                            kline = klines[0]
+                            candle_15m = {
+                                'timestamp': kline[0],
+                                'open': float(kline[1]),
+                                'high': float(kline[2]),
+                                'low': float(kline[3]),
+                                'close': float(kline[4]),
+                                'volume': float(kline[5])
+                            }
+
+                            # 重複チェック
+                            if not self.candle_data_15m[symbol] or \
+                               candle_15m['timestamp'] != self.candle_data_15m[symbol][-1]['timestamp']:
+                                self.candle_data_15m[symbol].append(candle_15m)
+                                self.last_15m_update[symbol] = kline[0]
+
+                                # 最大100本を保持
+                                if len(self.candle_data_15m[symbol]) > 100:
+                                    self.candle_data_15m[symbol].pop(0)
+
+                                print(f"🕒 {symbol}: 15分足更新 (${candle_15m['close']:.2f}, 保持: {len(self.candle_data_15m[symbol])}本)")
 
                 # ===== 4時間足の更新（4時間ごと） =====
                 last_4h = self.last_4h_update.get(symbol, 0)
@@ -872,6 +988,66 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             result['ema_20_1h'] = None
             result['ema_50_1h'] = None
             result['trend_1h'] = 'CALCULATING'
+
+        # 15分足コンテキスト（エントリータイミング判定用）
+        if symbol in self.candle_data_15m and len(self.candle_data_15m[symbol]) >= 20:
+            candles_15m = self.candle_data_15m[symbol]
+            closes_15m = [c['close'] for c in candles_15m]
+            highs_15m = [c['high'] for c in candles_15m]
+            lows_15m = [c['low'] for c in candles_15m]
+
+            # EMA 20を計算（エントリータイミング用）
+            result['ema_20_15m'] = self.indicators.calculate_ema(closes_15m, 20)
+
+            # MACD (15分足) - エントリーシグナル検出用
+            result['macd_15m'] = self.indicators.calculate_macd(closes_15m)
+
+            # RSI 14 (15分足) - 過熱感チェック
+            result['rsi_14_15m'] = self.indicators.calculate_rsi(closes_15m, 14)
+
+            # 15分足のモメンタム判定
+            macd_15m = result['macd_15m']
+            rsi_15m = result['rsi_14_15m']
+
+            if macd_15m and macd_15m.get('macd') is not None:
+                macd_val = macd_15m['macd']
+                signal_val = macd_15m.get('signal', 0)
+
+                if macd_val > signal_val:
+                    result['momentum_15m'] = 'BULLISH'
+                elif macd_val < signal_val:
+                    result['momentum_15m'] = 'BEARISH'
+                else:
+                    result['momentum_15m'] = 'NEUTRAL'
+            else:
+                result['momentum_15m'] = 'CALCULATING'
+        else:
+            # 15分足データが不足
+            result['ema_20_15m'] = None
+            result['momentum_15m'] = 'CALCULATING'
+
+        # 支持線/抵抗線検出（4時間足データから）
+        if symbol in self.candle_data_4h and len(self.candle_data_4h[symbol]) >= 100:
+            candles_4h = self.candle_data_4h[symbol]
+            highs_4h = [c['high'] for c in candles_4h]
+            lows_4h = [c['low'] for c in candles_4h]
+            closes_4h = [c['close'] for c in candles_4h]
+
+            # 支持線/抵抗線を検出
+            sr_data = self.indicators.detect_support_resistance(
+                highs_4h, lows_4h, closes_4h, current_price, lookback=100
+            )
+
+            result['support_levels'] = sr_data['support_levels']
+            result['resistance_levels'] = sr_data['resistance_levels']
+            result['nearest_support'] = sr_data['nearest_support']
+            result['nearest_resistance'] = sr_data['nearest_resistance']
+        else:
+            # 4時間足データが不足
+            result['support_levels'] = []
+            result['resistance_levels'] = []
+            result['nearest_support'] = None
+            result['nearest_resistance'] = None
 
         return result
 

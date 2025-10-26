@@ -147,6 +147,124 @@ class TechnicalIndicators:
         return slope
 
     @staticmethod
+    def detect_support_resistance(
+        highs: List[float],
+        lows: List[float],
+        closes: List[float],
+        current_price: float,
+        lookback: int = 100,
+        tolerance_pct: float = 1.0
+    ) -> Dict:
+        """
+        支持線/抵抗線を検出
+
+        Args:
+            highs: 高値リスト
+            lows: 安値リスト
+            closes: 終値リスト
+            current_price: 現在価格
+            lookback: 遡る期間
+            tolerance_pct: クラスタリング許容範囲（%）
+
+        Returns:
+            {
+                'support_levels': [(price, strength, distance), ...],
+                'resistance_levels': [(price, strength, distance), ...],
+                'nearest_support': price,
+                'nearest_resistance': price
+            }
+        """
+        if len(highs) < lookback or len(lows) < lookback:
+            return {
+                'support_levels': [],
+                'resistance_levels': [],
+                'nearest_support': None,
+                'nearest_resistance': None
+            }
+
+        # 直近lookback本のデータを使用
+        recent_highs = highs[-lookback:]
+        recent_lows = lows[-lookback:]
+        recent_closes = closes[-lookback:]
+
+        # スイングハイとスイングローを検出（局所的な最高値/最安値）
+        swing_highs = []
+        swing_lows = []
+
+        for i in range(2, len(recent_highs) - 2):
+            # スイングハイ: 前後2本より高い
+            if (recent_highs[i] > recent_highs[i-1] and
+                recent_highs[i] > recent_highs[i-2] and
+                recent_highs[i] > recent_highs[i+1] and
+                recent_highs[i] > recent_highs[i+2]):
+                swing_highs.append(recent_highs[i])
+
+            # スイングロー: 前後2本より低い
+            if (recent_lows[i] < recent_lows[i-1] and
+                recent_lows[i] < recent_lows[i-2] and
+                recent_lows[i] < recent_lows[i+1] and
+                recent_lows[i] < recent_lows[i+2]):
+                swing_lows.append(recent_lows[i])
+
+        # 価格帯でクラスタリング（±tolerance_pct以内を同一レベル）
+        def cluster_levels(levels):
+            if not levels:
+                return []
+
+            clusters = []
+            sorted_levels = sorted(levels)
+
+            for level in sorted_levels:
+                # 既存クラスタに追加できるか確認
+                added = False
+                for cluster in clusters:
+                    cluster_avg = sum(cluster) / len(cluster)
+                    if abs((level - cluster_avg) / cluster_avg * 100) <= tolerance_pct:
+                        cluster.append(level)
+                        added = True
+                        break
+
+                if not added:
+                    clusters.append([level])
+
+            # 各クラスタの平均価格とstrength（接触回数）を計算
+            result = []
+            for cluster in clusters:
+                avg_price = sum(cluster) / len(cluster)
+                strength = len(cluster)
+                distance_pct = ((current_price - avg_price) / avg_price * 100)
+                result.append((avg_price, strength, distance_pct))
+
+            return result
+
+        # クラスタリング実行
+        resistance_clusters = cluster_levels(swing_highs)
+        support_clusters = cluster_levels(swing_lows)
+
+        # Strengthでソート（強い順）
+        resistance_clusters.sort(key=lambda x: x[1], reverse=True)
+        support_clusters.sort(key=lambda x: x[1], reverse=True)
+
+        # 上位3つのみ保持
+        resistance_levels = resistance_clusters[:3]
+        support_levels = support_clusters[:3]
+
+        # 現在価格より上の抵抗線、下の支持線のみフィルタ
+        resistance_above = [(p, s, d) for p, s, d in resistance_levels if p > current_price]
+        support_below = [(p, s, d) for p, s, d in support_levels if p < current_price]
+
+        # 最も近い支持線/抵抗線を見つける
+        nearest_support = min(support_below, key=lambda x: abs(x[2]))[0] if support_below else None
+        nearest_resistance = min(resistance_above, key=lambda x: abs(x[2]))[0] if resistance_above else None
+
+        return {
+            'support_levels': support_below,
+            'resistance_levels': resistance_above,
+            'nearest_support': nearest_support,
+            'nearest_resistance': nearest_resistance
+        }
+
+    @staticmethod
     def classify_market_regime(
         price: float,
         ma_50: Optional[float],

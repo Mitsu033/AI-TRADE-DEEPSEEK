@@ -278,6 +278,68 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 prompt += f"""
     - RSI (14-period): {rsi_14:.2f}"""
 
+        # 15分足のエントリータイミング情報
+        ema_20_15m = data.get('ema_20_15m')
+        macd_15m = data.get('macd_15m')
+        rsi_14_15m = data.get('rsi_14_15m')
+        momentum_15m = data.get('momentum_15m', 'CALCULATING')
+
+        if ema_20_15m is not None:
+            prompt += f"""
+
+  15-Minute Timeframe (Entry Timing):
+    - 20-period EMA: ${ema_20_15m:.2f} (Price {((current_price - ema_20_15m) / ema_20_15m * 100):+.2f}%)"""
+
+            if macd_15m and macd_15m.get('macd') is not None:
+                prompt += f"""
+    - MACD: {macd_15m['macd']:.3f} (Signal: {macd_15m.get('signal', 0):.3f})"""
+
+            if rsi_14_15m is not None:
+                prompt += f"""
+    - RSI (14-period): {rsi_14_15m:.2f}"""
+
+            prompt += f"""
+    - Momentum: {momentum_15m}
+    - Use: Fine-tune entry timing within 1h trend direction"""
+
+        # 支持線/抵抗線（Key Price Levels）
+        nearest_support = data.get('nearest_support')
+        nearest_resistance = data.get('nearest_resistance')
+        support_levels = data.get('support_levels', [])
+        resistance_levels = data.get('resistance_levels', [])
+
+        if nearest_support or nearest_resistance:
+            prompt += f"""
+
+  Key Price Levels (Support/Resistance from 4H timeframe):"""
+
+            if nearest_support:
+                distance_pct = abs((current_price - nearest_support) / nearest_support * 100)
+                prompt += f"""
+    - Nearest Support: ${nearest_support:.2f} ({distance_pct:.2f}% below current)"""
+
+                # 追加の支持線（最大3つ）
+                if len(support_levels) > 1:
+                    other_supports = [s for s in support_levels if s[0] != nearest_support][:2]
+                    for price, strength, dist in other_supports:
+                        prompt += f"""
+      • ${price:.2f} (strength: {strength}, {abs(dist):.2f}% below)"""
+
+            if nearest_resistance:
+                distance_pct = abs((current_price - nearest_resistance) / nearest_resistance * 100)
+                prompt += f"""
+    - Nearest Resistance: ${nearest_resistance:.2f} ({distance_pct:.2f}% above current)"""
+
+                # 追加の抵抗線（最大3つ）
+                if len(resistance_levels) > 1:
+                    other_resistances = [r for r in resistance_levels if r[0] != nearest_resistance][:2]
+                    for price, strength, dist in other_resistances:
+                        prompt += f"""
+      • ${price:.2f} (strength: {strength}, {abs(dist):.2f}% above)"""
+
+            prompt += f"""
+    - Use: Plan entry/exit points and set stop-loss/take-profit levels"""
+
         # MODULE 4: Risk Management Data
         atr_14_4h = data.get('atr_14_4h')
         if atr_14_4h is not None:
