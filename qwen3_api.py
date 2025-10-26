@@ -57,8 +57,8 @@ class QWEN3API:
             print(f"Env Key Preview: {env_key[:20]}...{env_key[-10:]}")
         print(f"{'='*60}\n")
         self.base_url = "https://openrouter.ai/api/v1"
-        # 有料モデル（安定性重視）
-        self.model = "qwen/qwen-2.5-7b-instruct"
+        # 最高性能モデル（Qwen3-max）
+        self.model = "qwen/qwen3-max"
 
         # OpenAIクライアントを初期化
         self.client = OpenAI(
