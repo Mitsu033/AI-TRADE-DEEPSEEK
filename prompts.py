@@ -487,17 +487,20 @@ Follow the 5-MODULE FRAMEWORK systematically:
 
 1. MODULE 1: What is the market regime for each asset? (UPTREND/DOWNTREND/RANGE/UNCLEAR)
 2. MODULE 2: Which strategy model should be used? (TREND-FOLLOWING or MEAN-REVERSION)
-3. MODULE 3: Are there valid entry signals with confluence >= 2 indicators?
-4. MODULE 4: Calculate RRR for any potential trade. Is RRR >= 2.0?
+3. MODULE 3: Identify confluence signals (>= 1 indicator required, >= 2 preferred for high conviction)
+4. MODULE 4: Calculate RRR for ANY potential trade, even if confluence is 1
 5. MODULE 5: Check behavioral constraints (no chasing, no widening stops, etc.)
 
-REMEMBER:
-- Quality over quantity, but don't be overly conservative
-- RRR >= 1.5 is MINIMUM (>= 2.0 preferred for trending markets)
-- Confluence >= 1 indicator is MINIMUM (>= 2 preferred)
-- For RANGE markets: RRR >= 1.5 is acceptable due to mean-reversion nature
-- Use aggressive leverage based on RRR and confluence tiers
-- If any module fails, the trade is invalid → choose "hold"
+CRITICAL INSTRUCTIONS:
+- DO NOT require confluence >= 2 to enter trades (confluence >= 1 is VALID)
+- DO NOT skip RRR calculation if confluence < 2 (calculate for ALL setups)
+- For RANGE markets: confluence 1 + RRR >= 1.5 = VALID TRADE
+- For TRENDING markets: confluence 1 + RRR >= 2.0 = VALID TRADE
+- Confluence >= 2 is PREFERRED but NOT MANDATORY
+- RRR >= 1.5 is MINIMUM for RANGE markets
+- RRR >= 2.0 is PREFERRED for TRENDING markets
+- Use leverage tier: 3-10x (confluence 1) or 10-25x (confluence 2+)
+- ONLY reject if: confluence = 0 OR RRR < 1.5
 
 Respond with your trading decision in JSON format including:
 - market_regime
