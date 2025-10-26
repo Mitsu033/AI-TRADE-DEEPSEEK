@@ -83,19 +83,19 @@ def create_trading_prompt(
     invocation_count: int,
     exit_plans: Dict = None
 ) -> str:
-    """
-    取引判断用のプロンプトを生成（nof1.ai Qwen3-max スタイル）
-
+    """Generate trading prompt
+    
     Args:
-        market_data: 市場データ（価格、テクニカル指標等）
-        portfolio: ポートフォリオ情報
-        start_time: 取引開始時刻
-        invocation_count: 呼び出し回数
-
+        market_data: Market data with prices and technical indicators
+        portfolio: Portfolio information
+        start_time: Trading start time
+        invocation_count: Number of invocations
+        exit_plans: Exit plan information
+    
     Returns:
-        生成されたプロンプト文字列
+        Generated prompt string
     """
-
+    
     # 経過時間を計算
     elapsed_minutes = int((datetime.now() - start_time).total_seconds() / 60)
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -334,8 +334,30 @@ MODULE 4 - RISK MANAGEMENT DATA:
 
         prompt += "\n"
 
-        # (Open Interest/Funding Rateは現在データソースなし - 必要に応じて将来追加)
-        # (3分足時系列データは削除されました - 15/1h/4h足のみ使用)
+        # 3分足の超短期トレンド情報
+        ema_20_3m = data.get('ema_20_3m')
+        macd_3m = data.get('macd_3m')
+        rsi_7_3m = data.get('rsi_7_3m')
+        momentum_3m = data.get('momentum_3m', 'CALCULATING')
+
+        if ema_20_3m is not None:
+            prompt += f"""
+
+  3-Minute Timeframe (Ultra-Short Term):
+    - 20-period EMA: ${ema_20_3m:.2f} (Price {((current_price - ema_20_3m) / ema_20_3m * 100):+.2f}%)"""
+
+            if macd_3m and macd_3m.get('macd') is not None:
+                prompt += f"""
+    - MACD: {macd_3m['macd']:.3f} (Signal: {macd_3m.get('signal', 0):.3f})"""
+
+            if rsi_7_3m is not None:
+                prompt += f"""
+    - RSI (7-period): {rsi_7_3m:.2f}"""
+
+            prompt += f"""
+    - Momentum: {momentum_3m}
+    - Use: Detect very short-term momentum for entry timing
+"""
 
 
     # アカウント情報を追加
