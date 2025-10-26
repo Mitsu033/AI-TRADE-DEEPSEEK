@@ -134,13 +134,20 @@ RESPONSE FORMAT (JSON):
     }
 }
 
-MANDATORY FOR NEW POSITIONS:
-- market_regime must be clearly identified (not "UNCLEAR")
-- confluence_score must be >= 1 (prefer >= 2 for high confidence)
-- risk_reward_ratio must be >= 1.5 (prefer >= 2.0 for trending markets, 1.5 acceptable for RANGE)
-- exit_plan must be complete with all fields
+TRADE EXECUTION RULES (CRITICAL - READ CAREFULLY):
+- Confluence score 1 is FULLY VALID for entering trades
+- Confluence score 2 is PREFERRED but NOT required
+- For RANGE markets: RRR >= 1.5 + confluence >= 1 = EXECUTE TRADE
+- For TRENDING markets: RRR >= 2.0 + confluence >= 1 = EXECUTE TRADE
+- NEVER reject a trade solely because "confluence is below preferred threshold"
+- ONLY reject if: confluence = 0 OR calculated RRR < 1.5
 
-Quality over quantity. Patience and discipline are your greatest assets."""
+EXAMPLE VALID SETUP FOR RANGE MARKET:
+- Confluence: 1 (price at support from 20EMA)
+- RRR: 1.5 (target $65,500, stop $64,500)
+- Action: OPEN LONG (this is a valid trade, do not reject it)
+
+Quality over quantity. Be actively looking for trades, not overly conservative."""
 
 
 # ================================================================================
