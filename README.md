@@ -1,7 +1,12 @@
 # QWEN3-MAX 自動トレーディングシステム
 
 **Powered by QWEN3 AI + Hyperliquid Exchange**
-
+"""
+CONSTRAINT: A valid signal MUST have confluence from AT LEAST 2 different categories of indicators:
+   - Category 1 (Trend): Moving Averages, price structure
+   - Category 2 (Momentum): MACD, RSI
+   - Example valid confluence: Price at support (Trend) + RSI oversold (Momentum)
+"""
 暗号通貨の自動取引を行うAIトレーディングボットシステムです。QWEN3-MAX AIが市場データを分析し、Hyperliquid取引所で自動的に取引を実行します。
 
 ## 📁 プロジェクト構造

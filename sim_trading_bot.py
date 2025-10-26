@@ -460,6 +460,10 @@ class SimulationTradingBot:
             return False, 0.0, "Stop Loss がエントリー価格と同じです"
 
         rrr = reward / risk
+        
+        # Debug出力
+        print(f"  [RRR Debug] Entry=${entry_price:.2f}, Target=${profit_target:.2f}, Stop=${stop_loss:.2f}")
+        print(f"  [RRR Debug] Reward=${reward:.2f}, Risk=${risk:.2f}, RRR={rrr:.2f}")
 
         # 市場レジームに応じたRRR判定（レンジは1.5以上、トレンドは2.0以上推奨）
         # ここでは最低1.5を要求（プロンプトで指示されている通り）
@@ -583,12 +587,16 @@ class SimulationTradingBot:
             profit_target = exit_plan.get("profit_target")
             stop_loss = exit_plan.get("stop_loss")
 
+            # Entry priceは現在価格を使用（実際のエントリー時刻に最も近い値）
+            entry_price = current_price
+
             rrr_valid, rrr, rrr_msg = self._validate_risk_reward_ratio(
-                current_price,
+                entry_price,
                 profit_target,
                 stop_loss
             )
             print(f"MODULE 4 (Risk-Reward): {rrr_msg}")
+            print(f"  詳細: Entry=${entry_price:.2f}, Target=${profit_target:.2f}, Stop=${stop_loss:.2f}")
             if not rrr_valid:
                 return {
                     "status": "failed",
