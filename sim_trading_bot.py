@@ -438,76 +438,6 @@ class SimulationTradingBot:
                 "timestamp": datetime.now().isoformat()
             }
 
-    def _validate_risk_reward_ratio(self, entry_price: float, profit_target: float, stop_loss: float) -> tuple:
-        """MODULE 4: Risk-Reward Ratio (RRR) を検証
-
-        Args:
-            entry_price: エントリー価格
-            profit_target: 利益目標価格
-            stop_loss: 損切り価格
-
-        Returns:
-            (is_valid: bool, rrr: float, message: str)
-        """
-        if not all([entry_price, profit_target, stop_loss]):
-            return False, 0.0, "Exit Plan が不完全です（profit_target, stop_loss, entry_price が必須）"
-
-        # リスクとリワードを計算
-        risk = abs(entry_price - stop_loss)
-        reward = abs(profit_target - entry_price)
-
-        if risk == 0:
-            return False, 0.0, "Stop Loss がエントリー価格と同じです"
-
-        rrr = reward / risk
-        
-        # Debug出力
-        print(f"  [RRR Debug] Entry=${entry_price:.2f}, Target=${profit_target:.2f}, Stop=${stop_loss:.2f}")
-        print(f"  [RRR Debug] Reward=${reward:.2f}, Risk=${risk:.2f}, RRR={rrr:.2f}")
-
-        # 市場レジームに応じたRRR判定（レンジは1.5以上、トレンドは2.0以上推奨）
-        # ここでは最低1.5を要求（プロンプトで指示されている通り）
-        min_rrr = 1.5  # RANGE市場は1.5でOK、トレンド市場は2.0推奨
-        
-        if rrr < min_rrr:
-            return False, rrr, f"RRR {rrr:.2f} < {min_rrr} (必須条件未達成。レンジ市場: 1.5、トレンド市場: 2.0)"
-
-        return True, rrr, f"RRR {rrr:.2f} ✓"
-
-    def _validate_confluence(self, decision: Dict) -> tuple:
-        """MODULE 3: コンフルエンス（複数指標の一致）を検証
-
-        Args:
-            decision: AI判断結果
-
-        Returns:
-            (is_valid: bool, score: int, message: str)
-        """
-        confluence_score = decision.get("confluence_score", 0)
-
-        # confluence_score >= 1 が必須条件（2は推奨）
-        if confluence_score < 1:
-            return False, confluence_score, f"Confluence Score {confluence_score} < 1 (最低1つの指標一致が必要)"
-
-        return True, confluence_score, f"Confluence Score {confluence_score} ✓"
-
-    def _validate_market_regime(self, decision: Dict) -> tuple:
-        """MODULE 1: 市場レジームが明確かどうかを検証
-
-        Args:
-            decision: AI判断結果
-
-        Returns:
-            (is_valid: bool, regime: str, message: str)
-        """
-        market_regime = decision.get("market_regime", "UNCLEAR")
-
-        # UNCLEAR の場合は取引不可
-        if market_regime == "UNCLEAR":
-            return False, market_regime, "市場レジームが不明確です（データ不足またはレンジ相場の可能性）"
-
-        return True, market_regime, f"Market Regime: {market_regime} ✓"
-
     def _execute_trade(self, decision: Dict, market_data: Dict) -> Dict:
         """取引を実行（シミュレーション）"""
         action = decision.get("action", "hold").lower()
@@ -558,54 +488,15 @@ class SimulationTradingBot:
 
         current_price = market_data[asset]['price']
 
-        # 新規エントリー前の5モジュール検証
+        # 新規エントリー前にExit Planを確認（警告のみ、検証はしない）
         if action in ["open_long", "buy", "open_short", "sell"]:
-            print("\n" + "="*60)
-            print("📋 5-MODULE FRAMEWORK VALIDATION")
-            print("="*60)
-
-            # MODULE 1: 市場レジーム検証
-            regime_valid, regime, regime_msg = self._validate_market_regime(decision)
-            print(f"MODULE 1 (Market Regime): {regime_msg}")
-            if not regime_valid:
-                return {
-                    "status": "failed",
-                    "reason": f"MODULE 1 失敗: {regime_msg}"
-                }
-
-            # MODULE 3: コンフルエンス検証
-            confluence_valid, conf_score, conf_msg = self._validate_confluence(decision)
-            print(f"MODULE 3 (Confluence): {conf_msg}")
-            if not confluence_valid:
-                return {
-                    "status": "failed",
-                    "reason": f"MODULE 3 失敗: {conf_msg}"
-                }
-
-            # MODULE 4: RRR検証（Exit Planが必要）
             exit_plan = decision.get("exit_plan", {})
-            profit_target = exit_plan.get("profit_target")
-            stop_loss = exit_plan.get("stop_loss")
-
-            # Entry priceは現在価格を使用（実際のエントリー時刻に最も近い値）
-            entry_price = current_price
-
-            rrr_valid, rrr, rrr_msg = self._validate_risk_reward_ratio(
-                entry_price,
-                profit_target,
-                stop_loss
-            )
-            print(f"MODULE 4 (Risk-Reward): {rrr_msg}")
-            print(f"  詳細: Entry=${entry_price:.2f}, Target=${profit_target:.2f}, Stop=${stop_loss:.2f}")
-            if not rrr_valid:
-                return {
-                    "status": "failed",
-                    "reason": f"MODULE 4 失敗: {rrr_msg}"
-                }
-
-            print("="*60)
-            print("✅ ALL MODULES PASSED - Executing trade")
-            print("="*60 + "\n")
+            if exit_plan:
+                print(f"\n📋 Exit Plan確認:")
+                print(f"  Profit Target: ${exit_plan.get('profit_target', 'N/A'):.2f}" if exit_plan.get('profit_target') else "  Profit Target: N/A")
+                print(f"  Stop Loss: ${exit_plan.get('stop_loss', 'N/A'):.2f}" if exit_plan.get('stop_loss') else "  Stop Loss: N/A")
+            else:
+                print("\n⚠️ Exit Planが提供されていません（実行は続行）")
 
         # open_long または buy
         if action in ["open_long", "buy"]:
