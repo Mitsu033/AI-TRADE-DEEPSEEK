@@ -405,66 +405,7 @@ Open Interest: Latest: {data['open_interest']:.2f}
 Funding Rate: {data['funding_rate']:.6e}
 """
 
-        # 時系列データ（Intraday series）
-        if 'ema_20_series' in data and data['ema_20_series']:
-            prompt += f"\nIntraday series (3-minute intervals, oldest → latest):\n"
-
-            # 価格の時系列
-            if 'price_series' in data:
-                prices_str = ', '.join([f"{p:.2f}" for p in data['price_series'][-10:]])
-                prompt += f"\nMid prices: [{prices_str}]\n"
-
-            # EMA (20期間) の時系列
-            ema_series = data['ema_20_series'][-10:]
-            ema_str = ', '.join([f"{x:.3f}" for x in ema_series])
-            prompt += f"\nEMA indicators (20-period): [{ema_str}]\n"
-
-            # MACD の時系列
-            if 'macd_series' in data and data['macd_series']:
-                macd_series = data['macd_series'][-10:]
-                macd_str = ', '.join([f"{x:.3f}" for x in macd_series])
-                prompt += f"\nMACD indicators: [{macd_str}]\n"
-
-            # RSI (7期間) の時系列
-            if 'rsi_7_series' in data and data['rsi_7_series']:
-                rsi7_series = data['rsi_7_series'][-10:]
-                rsi7_str = ', '.join([f"{x:.3f}" for x in rsi7_series])
-                prompt += f"\nRSI indicators (7-Period): [{rsi7_str}]\n"
-
-            # RSI (14期間) の時系列
-            if 'rsi_14_series' in data and data['rsi_14_series']:
-                rsi14_series = data['rsi_14_series'][-10:]
-                rsi14_str = ', '.join([f"{x:.3f}" for x in rsi14_series])
-                prompt += f"\nRSI indicators (14-Period): [{rsi14_str}]\n"
-
-            # 4時間足コンテキスト
-            if 'ema_20_4h' in data and data['ema_20_4h'] is not None:
-                prompt += f"\nLonger-term context (4-hour timeframe):\n"
-                prompt += f"\n20-Period EMA: {data['ema_20_4h']:.3f}"
-
-                if 'ema_50_4h' in data and data['ema_50_4h'] is not None:
-                    prompt += f" vs. 50-Period EMA: {data['ema_50_4h']:.3f}\n"
-                else:
-                    prompt += "\n"
-
-                # ATR
-                if 'atr_14_4h' in data and data['atr_14_4h'] is not None:
-                    prompt += f"\n14-Period ATR: {data['atr_14_4h']:.3f}\n"
-
-                # 4時間足のMACD
-                if 'macd_4h' in data and data['macd_4h'].get('macd') is not None:
-                    macd_val = data['macd_4h']['macd']
-                    prompt += f"\nMACD (4h): {macd_val:.3f}\n"
-
-                # 4時間足のRSI
-                if 'rsi_14_4h' in data and data['rsi_14_4h'] is not None:
-                    prompt += f"\nRSI (14-Period, 4h): {data['rsi_14_4h']:.3f}\n"
-
-        else:
-            # テクニカル指標がまだ計算されていない場合
-            prompt += f"\nTechnical indicators are being calculated (need more data points: {data.get('data_points', 0)}/20)\n"
-
-        prompt += "\n24-hour range: High: {:.2f}, Low: {:.2f}, Change: {:.2f}%\n".format(high_24h, low_24h, change_24h)
+        # (3分足時系列データは削除されました - 15/1h/4h足のみ使用)
 
 
     # アカウント情報を追加

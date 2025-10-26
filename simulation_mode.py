@@ -316,9 +316,6 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # テクニカル指標計算クラス
         self.indicators = TechnicalIndicators()
 
-        # キャンドルデータの保存（symbol: [candle_data]）
-        self.candle_data = {symbol: [] for symbol in symbols}
-
         # 4時間足キャンドルデータの保存（マーケットレジーム判定用）
         self.candle_data_4h = {symbol: [] for symbol in symbols}
 
@@ -330,17 +327,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
         # 更新管理
         self.update_interval = 180  # 3分 = 180秒
-        self.last_candle_update = {}
         self.last_15m_update = {}  # 15分足の最終更新時刻
         self.last_1h_update = {}  # 1時間足の最終更新時刻
         self.last_4h_update = {}  # 4時間足の最終更新時刻
         self.is_initialized = False
         self.update_thread = None
         self.running = False
-
-        # 初期データを取得
-        print("📊 過去の市場データを取得中...")
-        self._fetch_initial_data()
 
         # 4時間足データを取得
         print("📊 4時間足データを取得中（マーケットレジーム判定用）...")
@@ -354,76 +346,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         print("📊 15分足データを取得中（エントリータイミング判定用）...")
         self._fetch_15m_initial_data()
 
+        # 全データ初期化完了
+        self.is_initialized = True
+        print("✅ 全データ初期化完了\n")
+
         # バックグラウンド更新を開始
         self._start_background_update()
-
-    def _fetch_initial_data(self):
-        """起動時に過去のキャンドルデータを一括取得"""
-        for symbol in self.symbols:
-            try:
-                binance_symbol = f"{symbol}USDT"
-                # 過去500本の3分足キャンドルを取得（25時間分 - 50MA/200MA計算に十分）
-                url = f"https://api.binance.com/api/v3/klines"
-                params = {
-                    'symbol': binance_symbol,
-                    'interval': '3m',  # 3分足
-                    'limit': 500  # 最大500本（200MA計算に必要）
-                }
-
-                # User-Agentヘッダーを追加してレート制限を回避
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-
-                # レート制限に対応した再試行ロジック
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        response = requests.get(url, params=params, headers=headers, timeout=10)
-
-                        if response.status_code == 200:
-                            klines = response.json()
-
-                            # キャンドルデータを保存
-                            for kline in klines:
-                                candle = {
-                                    'timestamp': kline[0],
-                                    'open': float(kline[1]),
-                                    'high': float(kline[2]),
-                                    'low': float(kline[3]),
-                                    'close': float(kline[4]),
-                                    'volume': float(kline[5])
-                                }
-                                self.candle_data[symbol].append(candle)
-
-                            # データ取得状況を詳細に表示
-                            data_count = len(klines)
-                            ma200_ready = "✅ 可能" if data_count >= 200 else f"⏳ 不可 (あと{200-data_count}本必要)"
-                            print(f"✅ {symbol}: {data_count}本取得 | 200MA計算: {ma200_ready}")
-                            break  # 成功したらループ終了
-
-                        elif response.status_code == 418:
-                            # レート制限エラー - バックオフして再試行
-                            wait_time = (2 ** attempt) * 2  # 2秒, 4秒, 8秒
-                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行 (試行 {attempt + 1}/{max_retries})")
-                            time.sleep(wait_time)
-                        else:
-                            print(f"⚠️ {symbol}: 過去データ取得失敗 (status: {response.status_code})")
-                            break
-
-                    except requests.exceptions.RequestException as e:
-                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
-                        if attempt < max_retries - 1:
-                            time.sleep(2)
-
-                # API制限を避けるために待機（0.2秒 → 1.5秒に延長）
-                time.sleep(1.5)
-
-            except Exception as e:
-                print(f"❌ {symbol}の過去データ取得エラー: {e}")
-
-        self.is_initialized = True
-        print("✅ 初期データ取得完了\n")
 
     def _fetch_4h_initial_data(self):
         """
@@ -652,7 +580,7 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         self.update_thread.start()
 
     def _update_candles(self):
-        """新しいキャンドルデータを取得して追加（3分足、1時間足、4時間足）"""
+        """新しいキャンドルデータを取得して追加（15分足、1時間足、4時間足）"""
         current_time_ms = int(time.time() * 1000)
 
         for symbol in self.symbols:
@@ -662,36 +590,6 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
-
-                # ===== 3分足の更新（毎回） =====
-                params_3m = {
-                    'symbol': binance_symbol,
-                    'interval': '3m',
-                    'limit': 1
-                }
-
-                response = requests.get(url, params=params_3m, headers=headers, timeout=10)
-
-                if response.status_code == 200:
-                    klines = response.json()
-                    if klines:
-                        kline = klines[0]
-                        candle = {
-                            'timestamp': kline[0],
-                            'open': float(kline[1]),
-                            'high': float(kline[2]),
-                            'low': float(kline[3]),
-                            'close': float(kline[4]),
-                            'volume': float(kline[5])
-                        }
-
-                        self.candle_data[symbol].append(candle)
-
-                        # 最大600本を保持
-                        if len(self.candle_data[symbol]) > 600:
-                            self.candle_data[symbol].pop(0)
-
-                        print(f"🔄 {symbol}: 3分足更新 (${candle['close']:.2f}, 保持: {len(self.candle_data[symbol])}本)")
 
                 # ===== 1時間足の更新（1時間ごと） =====
                 last_1h = self.last_1h_update.get(symbol, 0)
@@ -821,61 +719,26 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
     def _calculate_indicators_for_symbol(self, symbol: str) -> Dict:
         """指定銘柄のテクニカル指標を計算"""
-        candles = self.candle_data.get(symbol, [])
+        # 現在価格を15分足から取得（最短時間軸）
+        current_price = None
+        if symbol in self.candle_data_15m and self.candle_data_15m[symbol]:
+            current_price = self.candle_data_15m[symbol][-1]['close']
+        elif symbol in self.candle_data_1h and self.candle_data_1h[symbol]:
+            current_price = self.candle_data_1h[symbol][-1]['close']
+        elif symbol in self.candle_data_4h and self.candle_data_4h[symbol]:
+            current_price = self.candle_data_4h[symbol][-1]['close']
 
-        if len(candles) < 20:
+        if current_price is None:
             # データ不足
             return {
-                'data_points': len(candles),
-                'status': 'insufficient_data'
+                'status': 'insufficient_data',
+                'price': 0
             }
-
-        # 価格データを抽出
-        close_prices = [c['close'] for c in candles]
-        high_prices = [c['high'] for c in candles]
-        low_prices = [c['low'] for c in candles]
-
-        # 現在の価格
-        current_price = close_prices[-1]
-
-        # 24時間データ（仮定：最新のキャンドルから計算）
-        high_24h = max(high_prices[-480:]) if len(high_prices) >= 480 else max(high_prices)
-        low_24h = min(low_prices[-480:]) if len(low_prices) >= 480 else min(low_prices)
-        change_24h = 0
-        if len(close_prices) >= 480:
-            change_24h = ((current_price - close_prices[-480]) / close_prices[-480] * 100)
 
         result = {
             'price': current_price,
-            'high_24h': high_24h,
-            'low_24h': low_24h,
-            'change_24h': change_24h,
-            'data_points': len(candles)
+            'status': 'ok'
         }
-
-        # 価格の時系列（最新10データポイント）
-        result['price_series'] = close_prices[-10:]
-
-        # EMA (20期間) の時系列
-        result['ema_20_series'] = self.indicators.calculate_ema_series(close_prices, 20, 10)
-        result['ema_20'] = result['ema_20_series'][-1] if result['ema_20_series'] else None
-
-        # MACD の時系列
-        if len(close_prices) >= 26:
-            result['macd_series'] = self.indicators.calculate_macd_series(close_prices, 10)
-            macd_full = self.indicators.calculate_macd(close_prices)
-            result['macd'] = macd_full.get('macd')
-        else:
-            result['macd_series'] = []
-            result['macd'] = None
-
-        # RSI (7期間) の時系列
-        result['rsi_7_series'] = self.indicators.calculate_rsi_series(close_prices, 7, 10)
-        result['rsi_7'] = result['rsi_7_series'][-1] if result['rsi_7_series'] else None
-
-        # RSI (14期間) の時系列
-        result['rsi_14_series'] = self.indicators.calculate_rsi_series(close_prices, 14, 10)
-        result['rsi_14'] = result['rsi_14_series'][-1] if result['rsi_14_series'] else None
 
         # 4時間足コンテキスト（マーケットレジーム判定用）
         if symbol in self.candle_data_4h and len(self.candle_data_4h[symbol]) >= 50:
@@ -1099,12 +962,19 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
             except Exception as e:
                 print(f"❌ {symbol}の指標計算エラー: {e}")
-                # エラー時は基本データのみ返す
-                if self.candle_data.get(symbol):
-                    market_data[symbol] = {
-                        'price': self.candle_data[symbol][-1]['close'],
-                        'error': str(e)
-                    }
+                # エラー時は基本データのみ返す（15分足から取得を試みる）
+                price = 0
+                if symbol in self.candle_data_15m and self.candle_data_15m[symbol]:
+                    price = self.candle_data_15m[symbol][-1]['close']
+                elif symbol in self.candle_data_1h and self.candle_data_1h[symbol]:
+                    price = self.candle_data_1h[symbol][-1]['close']
+                elif symbol in self.candle_data_4h and self.candle_data_4h[symbol]:
+                    price = self.candle_data_4h[symbol][-1]['close']
+
+                market_data[symbol] = {
+                    'price': price,
+                    'error': str(e)
+                }
 
         return market_data
 
