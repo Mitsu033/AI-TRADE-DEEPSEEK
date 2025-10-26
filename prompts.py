@@ -55,10 +55,11 @@ SUB-DIRECTIVE (Mean-Reversion):
    - Identify test of range boundary (support/resistance)
    - Confirm with RSI entering oversold (<30) or overbought (>70) territory
 
-CONSTRAINT: A valid signal MUST have confluence from AT LEAST 2 different categories of indicators:
-   - Category 1 (Trend): Moving Averages, price structure
-   - Category 2 (Momentum): MACD, RSI
-   - Example valid confluence: Price at support (Trend) + RSI oversold (Momentum)
+CONFIDENCE TIER SYSTEM:
+   - Confluence score 2+ indicators → High confidence (preferred, use leverage 8-15x)
+   - Confluence score 1 indicator → Moderate confidence (acceptable, use leverage 3-8x)
+   - Confluence score 0 → Invalid, abort trade
+   Note: For RANGE markets, confluence score 1 is acceptable if price is at clear support/resistance
 
 ═══════════════════════════════════════════════════════════════════════════════
 MODULE 4: RISK MANAGEMENT AND TRADE EXECUTION
@@ -74,11 +75,20 @@ SUB-DIRECTIVE 2: Define logical profit target based on next major resistance/sup
 
 SUB-DIRECTIVE 3: Calculate Risk-Reward Ratio (RRR):
    - RRR = (Profit Target - Entry Price) / (Entry Price - Stop Loss)
-   - CRITICAL: If RRR < 2.0, ABORT the trade. This is non-negotiable.
+   - TIER SYSTEM:
+     • RRR ≥ 2.5 → EXCELLENT (use leverage 15-25x)
+     • RRR ≥ 2.0 → HIGH (use leverage 10-20x)
+     • RRR ≥ 1.5 → GOOD (use leverage 5-15x, acceptable for RANGE markets)
+     • RRR < 1.5 → ABORT the trade (non-negotiable)
+   - Special note: RANGE markets allow RRR ≥ 1.5 (mean-reversion requires smaller moves)
 
-SUB-DIRECTIVE 4: Position sizing:
-   - Use moderate leverage (1-5x) for standard setups
-   - Higher leverage (5-10x) only for exceptional setups with RRR > 3.0
+SUB-DIRECTIVE 4: Position sizing and leverage (NO UPPER LIMIT):
+   - Use leverage aggressively based on RRR and confluence:
+     • RRR ≥ 2.5 + Confluence 2+ → Use 15-25x leverage
+     • RRR ≥ 2.0 + Confluence 2+ → Use 10-20x leverage
+     • RRR ≥ 2.0 + Confluence 1 → Use 5-15x leverage
+     • RRR ≥ 1.5 (RANGE only) → Use 3-10x leverage
+   - Maximize returns while managing risk through tight stops
 
 SUB-DIRECTIVE 5: If all checks pass, execute trade with pre-defined stop-loss and profit target orders.
 
@@ -110,7 +120,7 @@ RESPONSE FORMAT (JSON):
     "action": "open_long" | "open_short" | "close_position" | "hold",
     "asset": "BTC" | "ETH" | "SOL" | "BNB" | "DOGE" | "XRP",
     "amount_usd": <number>,
-    "leverage": <1-10>,
+    "leverage": <1-50>,
     "confidence": <0.0-1.0>,
     "reasoning": "<systematic analysis through all 5 modules>",
     "market_regime": "UPTREND" | "DOWNTREND" | "RANGE" | "UNCLEAR",
@@ -126,8 +136,8 @@ RESPONSE FORMAT (JSON):
 
 MANDATORY FOR NEW POSITIONS:
 - market_regime must be clearly identified (not "UNCLEAR")
-- confluence_score must be >= 2
-- risk_reward_ratio must be >= 2.0
+- confluence_score must be >= 1 (prefer >= 2 for high confidence)
+- risk_reward_ratio must be >= 1.5 (prefer >= 2.0 for trending markets, 1.5 acceptable for RANGE)
 - exit_plan must be complete with all fields
 
 Quality over quantity. Patience and discipline are your greatest assets."""
@@ -268,10 +278,10 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
         if macd is not None or rsi_7 is not None or rsi_14 is not None:
             prompt += f"""
   Momentum Indicators:"""
-            if macd is not None:
+        if macd is not None:
                 prompt += f"""
     - MACD: {macd:.3f}"""
-            if rsi_7 is not None:
+        if rsi_7 is not None:
                 prompt += f"""
     - RSI (7-period): {rsi_7:.2f}"""
             if rsi_14 is not None:
@@ -376,7 +386,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 strength_desc = "VERY STRONG - High conviction trades recommended"
             elif trend_strength >= 50:
                 strength_desc = "MODERATE - Proceed with caution"
-            else:
+                else:
                 strength_desc = "WEAK - Consider waiting for clearer structure"
 
             prompt += f"""
@@ -482,9 +492,11 @@ Follow the 5-MODULE FRAMEWORK systematically:
 5. MODULE 5: Check behavioral constraints (no chasing, no widening stops, etc.)
 
 REMEMBER:
-- Quality over quantity
-- RRR >= 2.0 is MANDATORY
-- Confluence >= 2 indicators is MANDATORY
+- Quality over quantity, but don't be overly conservative
+- RRR >= 1.5 is MINIMUM (>= 2.0 preferred for trending markets)
+- Confluence >= 1 indicator is MINIMUM (>= 2 preferred)
+- For RANGE markets: RRR >= 1.5 is acceptable due to mean-reversion nature
+- Use aggressive leverage based on RRR and confluence tiers
 - If any module fails, the trade is invalid → choose "hold"
 
 Respond with your trading decision in JSON format including:
