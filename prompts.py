@@ -227,8 +227,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
     - RSI (14-period): {rsi_14_15m:.2f}"""
 
             prompt += f"""
-    - Momentum: {momentum_15m}
-    - Use: Fine-tune entry timing within 1h trend direction"""
+    - Momentum: {momentum_15m}"""
 
         # Get Support/Resistance levels (Key Price Levels)
         nearest_support = data.get('nearest_support')
@@ -265,9 +264,6 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                         prompt += f"""
       • ${price:.2f} (strength: {strength}, {abs(dist):.2f}% above)"""
 
-            prompt += f"""
-    - Use: Plan entry/exit points and set stop-loss/take-profit levels"""
-
         # Price Structure Analysis (from 1H timeframe)
         price_structure = data.get('price_structure')
         structure_pattern = data.get('structure_pattern')
@@ -288,28 +284,13 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
             # Display pattern details
             if structure_pattern == 'HH+HL':
                 prompt += f"""
-    - Higher Highs: {hh_count} | Higher Lows: {hl_count}
-    - Interpretation: Strong uptrend with consistent higher highs and higher lows"""
+    - Higher Highs: {hh_count} | Higher Lows: {hl_count}"""
             elif structure_pattern == 'LL+LH':
                 prompt += f"""
-    - Lower Lows: {ll_count} | Lower Highs: {lh_count}
-    - Interpretation: Strong downtrend with consistent lower lows and lower highs"""
+    - Lower Lows: {ll_count} | Lower Highs: {lh_count}"""
             else:
                 prompt += f"""
-    - HH: {hh_count} | HL: {hl_count} | LH: {lh_count} | LL: {ll_count}
-    - Interpretation: Mixed structure, possibly ranging or trend transition"""
-
-            # Interpret trend strength
-            if trend_strength >= 70:
-                strength_desc = "VERY STRONG - High conviction trades recommended"
-            elif trend_strength >= 50:
-                strength_desc = "MODERATE - Proceed with caution"
-            else:
-                strength_desc = "WEAK - Consider waiting for clearer structure"
-
-            prompt += f"""
-    - Strength Assessment: {strength_desc}
-    - Use: Confirm trend direction and assess trade quality"""
+    - HH: {hh_count} | HL: {hl_count} | LH: {lh_count} | LL: {ll_count}"""
 
         # MODULE 4: Risk Management Data
         atr_14_4h = data.get('atr_14_4h')
@@ -317,9 +298,7 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
             prompt += f"""
 
 MODULE 4 - RISK MANAGEMENT DATA:
-  Volatility (4h ATR): ${atr_14_4h:.2f}
-  Recommended Position Size: Based on ATR and account risk
-  Note: RRR >= 2.0 is MANDATORY for any new position"""
+  Volatility (4h ATR): ${atr_14_4h:.2f}"""
 
         prompt += "\n"
 
@@ -345,7 +324,6 @@ MODULE 4 - RISK MANAGEMENT DATA:
 
             prompt += f"""
     - Momentum: {momentum_3m}
-    - Use: Detect very short-term momentum for entry timing
 """
 
 
@@ -384,9 +362,7 @@ Initial Balance: {initial_balance:.2f}
   Current Exit Plan:
     - Profit Target: ${plan.get('profit_target', 'N/A')}
     - Stop Loss: ${plan.get('stop_loss', 'N/A')}
-    - Invalidation: {plan.get('invalidation_condition', 'N/A')} (price: ${plan.get('invalidation_price', 'N/A')})
-  Note: You may update this exit plan if market conditions have changed significantly.
-        Otherwise, the current plan will automatically execute at these levels."""
+    - Invalidation: {plan.get('invalidation_condition', 'N/A')} (price: ${plan.get('invalidation_price', 'N/A')})"""
     else:
         prompt += "\nNo open positions currently.\n"
 
