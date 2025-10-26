@@ -325,8 +325,8 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 15分足キャンドルデータの保存（エントリータイミング判定用）
         self.candle_data_15m = {symbol: [] for symbol in symbols}
 
-        # 更新管理
-        self.update_interval = 180  # 3分 = 180秒
+        # 更新管理（15分足が最短時間軸のため15分間隔で更新）
+        self.update_interval = 900  # 15分 = 900秒
         self.last_15m_update = {}  # 15分足の最終更新時刻
         self.last_1h_update = {}  # 1時間足の最終更新時刻
         self.last_4h_update = {}  # 4時間足の最終更新時刻
@@ -571,7 +571,7 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         def update_loop():
             while self.running:
                 try:
-                    time.sleep(self.update_interval)  # 3分待機
+                    time.sleep(self.update_interval)  # 15分待機
                     self._update_candles()
                 except Exception as e:
                     print(f"⚠️ バックグラウンド更新エラー: {e}")
@@ -758,13 +758,7 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             else:
                 result['ma_200_4h'] = None
 
-            # EMA 20/50を計算
-            result['ema_20_4h'] = self.indicators.calculate_ema(closes_4h, 20)
-            result['ema_50_4h'] = self.indicators.calculate_ema(closes_4h, 50)
-
-            # その他の4時間足指標
-            result['macd_4h'] = self.indicators.calculate_macd(closes_4h)
-            result['rsi_14_4h'] = self.indicators.calculate_rsi(closes_4h, 14)
+            # ATR 14（MODULE 4 - リスク管理用）のみ計算
             result['atr_14_4h'] = self.indicators.calculate_atr(highs_4h, lows_4h, closes_4h, 14)
 
             # マーケットレジーム判定
@@ -827,12 +821,6 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             else:
                 result['ema_50_1h'] = None
 
-            # MACD (1時間足)
-            result['macd_1h'] = self.indicators.calculate_macd(closes_1h)
-
-            # RSI 14 (1時間足)
-            result['rsi_14_1h'] = self.indicators.calculate_rsi(closes_1h, 14)
-
             # 1時間足のトレンド方向を判定
             ema_20_1h = result['ema_20_1h']
             ema_50_1h = result['ema_50_1h']
@@ -868,6 +856,15 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             # RSI 14 (15分足) - 過熱感チェック
             result['rsi_14_15m'] = self.indicators.calculate_rsi(closes_15m, 14)
 
+            # RSI 7 (15分足) - 短期過熱感チェック
+            result['rsi_7_15m'] = self.indicators.calculate_rsi(closes_15m, 7)
+
+            # MODULE 3用に15分足データを基本指標としても提供
+            result['ema_20'] = result['ema_20_15m']
+            result['macd'] = result['macd_15m'].get('macd') if result['macd_15m'] else None
+            result['rsi_14'] = result['rsi_14_15m']
+            result['rsi_7'] = result['rsi_7_15m']
+
             # 15分足のモメンタム判定
             macd_15m = result['macd_15m']
             rsi_15m = result['rsi_14_15m']
@@ -887,7 +884,16 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         else:
             # 15分足データが不足
             result['ema_20_15m'] = None
+            result['rsi_14_15m'] = None
+            result['rsi_7_15m'] = None
+            result['macd_15m'] = None
             result['momentum_15m'] = 'CALCULATING'
+
+            # MODULE 3用のフォールバック（15分足データ不足時）
+            result['ema_20'] = None
+            result['macd'] = None
+            result['rsi_14'] = None
+            result['rsi_7'] = None
 
         # 支持線/抵抗線検出（4時間足データから）
         if symbol in self.candle_data_4h and len(self.candle_data_4h[symbol]) >= 100:

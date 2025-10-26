@@ -395,16 +395,7 @@ MODULE 4 - RISK MANAGEMENT DATA:
 
         prompt += "\n"
 
-        # Open Interest と Funding Rate
-        if 'open_interest' in data and 'funding_rate' in data:
-            prompt += f"""
-In addition, here is the latest {symbol} open interest and funding rate for perps:
-
-Open Interest: Latest: {data['open_interest']:.2f}
-
-Funding Rate: {data['funding_rate']:.6e}
-"""
-
+        # (Open Interest/Funding Rateは現在データソースなし - 必要に応じて将来追加)
         # (3分足時系列データは削除されました - 15/1h/4h足のみ使用)
 
 
