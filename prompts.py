@@ -498,16 +498,22 @@ Follow the 5-MODULE FRAMEWORK systematically:
 4. MODULE 4: Calculate RRR for ANY potential trade, even if confluence is 1
 5. MODULE 5: Check behavioral constraints (no chasing, no widening stops, etc.)
 
-CRITICAL INSTRUCTIONS:
-- DO NOT require confluence >= 2 to enter trades (confluence >= 1 is VALID)
-- DO NOT skip RRR calculation if confluence < 2 (calculate for ALL setups)
-- For RANGE markets: confluence 1 + RRR >= 1.5 = VALID TRADE
-- For TRENDING markets: confluence 1 + RRR >= 2.0 = VALID TRADE
-- Confluence >= 2 is PREFERRED but NOT MANDATORY
-- RRR >= 1.5 is MINIMUM for RANGE markets
-- RRR >= 2.0 is PREFERRED for TRENDING markets
-- Use leverage tier: 3-10x (confluence 1) or 10-25x (confluence 2+)
-- ONLY reject if: confluence = 0 OR RRR < 1.5
+DECISION TREE (FOLLOW THIS EXACTLY):
+
+IF confluence_score = 0:
+   → REJECT (hold)
+   
+ELSE IF confluence_score >= 1:
+   → MUST calculate RRR
+   → IF RRR >= 1.5 (RANGE) OR RRR >= 2.0 (TREND):
+      → EXECUTE TRADE
+      → Use leverage: 3-10x (confluence 1) or 10-25x (confluence 2+)
+   → IF RRR < 1.5 (RANGE) OR RRR < 2.0 (TREND):
+      → REJECT (RRR too low)
+   
+NEVER SAY "trade does not meet criteria" when confluence = 1
+ALWAYS calculate RRR when confluence >= 1
+ONLY reject when confluence = 0 OR (confluence >= 1 AND RRR is insufficient)
 
 Respond with your trading decision in JSON format including:
 - market_regime

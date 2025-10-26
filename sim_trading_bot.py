@@ -461,9 +461,12 @@ class SimulationTradingBot:
 
         rrr = reward / risk
 
-        # RRR >= 2.0 が必須条件
-        if rrr < 2.0:
-            return False, rrr, f"RRR {rrr:.2f} < 2.0 (必須条件未達成)"
+        # 市場レジームに応じたRRR判定（レンジは1.5以上、トレンドは2.0以上推奨）
+        # ここでは最低1.5を要求（プロンプトで指示されている通り）
+        min_rrr = 1.5  # RANGE市場は1.5でOK、トレンド市場は2.0推奨
+        
+        if rrr < min_rrr:
+            return False, rrr, f"RRR {rrr:.2f} < {min_rrr} (必須条件未達成。レンジ市場: 1.5、トレンド市場: 2.0)"
 
         return True, rrr, f"RRR {rrr:.2f} ✓"
 
@@ -478,9 +481,9 @@ class SimulationTradingBot:
         """
         confluence_score = decision.get("confluence_score", 0)
 
-        # confluence_score >= 2 が必須条件
-        if confluence_score < 2:
-            return False, confluence_score, f"Confluence Score {confluence_score} < 2 (最低2つの指標一致が必要)"
+        # confluence_score >= 1 が必須条件（2は推奨）
+        if confluence_score < 1:
+            return False, confluence_score, f"Confluence Score {confluence_score} < 1 (最低1つの指標一致が必要)"
 
         return True, confluence_score, f"Confluence Score {confluence_score} ✓"
 
