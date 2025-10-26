@@ -31,7 +31,7 @@ KEY REQUIREMENTS:
 1. When opening a position (open_long or open_short), you MUST provide a complete exit_plan with:
    - profit_target: Your target profit price
    - stop_loss: Your stop-loss price
-   - invalidation: Description of when to exit early (e.g., "Break below key support", "Trend reversal signal")
+   - invalidation: Description of when to exit early (e.g., Break below key support, Trend reversal signal)
    - invalidation_price: Specific price that would invalidate your trade thesis
 
 2. Leverage: Use any level between 1-50x based on your confidence in the setup. More aggressive setups can use higher leverage.
@@ -70,6 +70,7 @@ IMPORTANT:
 - Maximize returns through good risk management (tight stops, strategic leverage)
 - When opening positions, exit_plan is mandatory
 - Analyze the multi-timeframe data to confirm your thesis before executing
+"""
 
 
 # ================================================================================
@@ -108,12 +109,9 @@ def create_trading_prompt(
     positions = portfolio.get('positions', {})
 
     # Build prompt
-    prompt = f"""It has been {elapsed_minutes} minutes since you started trading. The current time is {current_time} and you've been invoked {invocation_count} times. Below, we are providing you with a variety of state data, price data, and predictive signals so you can discover alpha. Below that is your current account information, value, performance, positions, etc.
-
-ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST
-
-CURRENT MARKET STATE FOR ALL COINS
-"""
+    prompt = f"It has been {elapsed_minutes} minutes since you started trading. The current time is {current_time} and you have been invoked {invocation_count} times. Below, we are providing you with a variety of state data, price data, and predictive signals so you can discover alpha. Below that is your current account information, value, performance, positions, etc.\n\n"
+    prompt += "ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST -> NEWEST\n\n"
+    prompt += "CURRENT MARKET STATE FOR ALL COINS\n"
 
     # Add market data for each coin
     for symbol, data in market_data.items():
@@ -133,14 +131,11 @@ CURRENT MARKET STATE FOR ALL COINS
         ma_200_4h = data.get('ma_200_4h')
         market_regime = data.get('market_regime', 'CALCULATING')
 
-        prompt += f"""
-═══════════════════════════════════════════════════════════════════
-{symbol} MULTI-TIMEFRAME ANALYSIS
-═══════════════════════════════════════════════════════════════════
-
-CURRENT PRICE: ${current_price:.2f}
-
-MODULE 1 - MARKET REGIME:"""
+        prompt += f"\n{'='*63}\n"
+        prompt += f"{symbol} MULTI-TIMEFRAME ANALYSIS\n"
+        prompt += f"{'='*63}\n\n"
+        prompt += f"CURRENT PRICE: ${current_price:.2f}\n\n"
+        prompt += "MODULE 1 - MARKET REGIME:\n"
 
         if ma_50_4h is not None and ma_200_4h is not None:
             prompt += f"""
@@ -402,24 +397,17 @@ Initial Balance: {initial_balance:.2f}
         prompt += "\nNo open positions currently.\n"
 
     # Trading decision instructions
-    prompt += f"""
-
-═══════════════════════════════════════════════════════════════════
-YOUR TASK: MAKE A TRADING DECISION
-═══════════════════════════════════════════════════════════════════
-
-Analyze the market data above and make your decision:
-
-1. Review the multi-timeframe data (4H, 1H, 15M, 3M)
-2. Assess market regime and trend direction
-3. Identify any trading opportunities
-4. Calculate risk/reward for potential trades
-5. Decide: open_long, open_short, close_position, or hold
-
-REMEMBER: When opening a position (open_long or open_short), you MUST include a complete exit_plan with profit_target, stop_loss, invalidation, and invalidation_price.
-
-Respond with JSON format as specified in the system prompt.
-"""
+    prompt += f"\n\n{'='*63}\n"
+    prompt += "YOUR TASK: MAKE A TRADING DECISION\n"
+    prompt += f"{'='*63}\n\n"
+    prompt += "Analyze the market data above and make your decision:\n\n"
+    prompt += "1. Review the multi-timeframe data (4H, 1H, 15M, 3M)\n"
+    prompt += "2. Assess market regime and trend direction\n"
+    prompt += "3. Identify any trading opportunities\n"
+    prompt += "4. Calculate risk/reward for potential trades\n"
+    prompt += "5. Decide: open_long, open_short, close_position, or hold\n\n"
+    prompt += "REMEMBER: When opening a position (open_long or open_short), you MUST include a complete exit_plan with profit_target, stop_loss, invalidation, and invalidation_price.\n\n"
+    prompt += "Respond with JSON format as specified in the system prompt.\n"
 
     return prompt
 
