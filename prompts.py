@@ -4,6 +4,7 @@ AI Trading Bot - プロンプト設定
 """
 from typing import Dict
 from datetime import datetime
+from time_utils import now_jst, to_jst_str
 
 
 # ================================================================================
@@ -34,11 +35,7 @@ KEY REQUIREMENTS:
    - invalidation: Description of when to exit early (e.g., Break below key support, Trend reversal signal)
    - invalidation_price: Specific price that would invalidate your trade thesis
 
-2. Leverage: Use any level between 1-50x based on your confidence in the setup. More aggressive setups can use higher leverage.
-
-3. Market regime: Classify as UPTREND, DOWNTREND, RANGE, or UNCLEAR based on the provided MA data and price action.
-
-4. Confluence score: Count how many indicators agree with your trade direction (1-5).
+2. Leverage, confidence, and all other parameters should be set based on your analysis and risk assessment.
 
 AVAILABLE ACTIONS:
 - open_long: Open a new long position (MUST include exit_plan)
@@ -51,12 +48,9 @@ RESPONSE FORMAT (JSON):
     "action": "open_long" | "open_short" | "close_position" | "hold",
     "asset": "BTC" | "ETH" | "SOL" | "BNB" | "DOGE" | "XRP",
     "amount_usd": <number>,
-    "leverage": <1-50>,
-    "confidence": <0.0-1.0>,
+    "leverage": <number>,
+    "confidence": <number>,
     "reasoning": "<your analysis and decision rationale>",
-    "market_regime": "UPTREND" | "DOWNTREND" | "RANGE" | "UNCLEAR",
-    "confluence_score": <number>,
-    "risk_reward_ratio": <number if opening position>,
     "exit_plan": {
         "profit_target": <price_number>,
         "stop_loss": <price_number>,
@@ -67,7 +61,7 @@ RESPONSE FORMAT (JSON):
 
 IMPORTANT: 
 - Be proactive in looking for trading opportunities
-- Maximize returns through good risk management (tight stops, strategic leverage)
+- Maximize returns through good risk management
 - When opening positions, exit_plan is mandatory
 - Analyze the multi-timeframe data to confirm your thesis before executing
 """
@@ -98,8 +92,8 @@ def create_trading_prompt(
     """
     
     # Calculate elapsed time
-    elapsed_minutes = int((datetime.now() - start_time).total_seconds() / 60)
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    elapsed_minutes = int((now_jst() - start_time).total_seconds() / 60)
+    current_time = now_jst().strftime("%Y-%m-%d %H:%M:%S")
 
     # Extract portfolio information
     total_value = portfolio.get('total_value', 0)

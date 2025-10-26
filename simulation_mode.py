@@ -328,8 +328,9 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 3分足キャンドルデータの保存（短期トレンド判定用）
         self.candle_data_3m = {symbol: [] for symbol in symbols}
 
-        # 更新管理（3分足が最短時間軸のため3分間隔で更新）
-        self.update_interval = 180  # 3分 = 180秒
+        # 更新管理（1分ごとに価格データを更新）
+        self.update_interval = 60  # 1分 = 60秒
+        self.last_price_update = {}  # 価格の最終更新時刻
         self.last_3m_update = {}  # 3分足の最終更新時刻
         self.last_15m_update = {}  # 15分足の最終更新時刻
         self.last_1h_update = {}  # 1時間足の最終更新時刻
@@ -668,6 +669,26 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
+
+                # ===== 価格データの更新（1分ごと） =====
+                last_price = self.last_price_update.get(symbol, 0)
+                time_since_price = (current_time_ms - last_price) / 1000  # 秒に変換
+
+                if time_since_price >= 60:  # 1分以上経過
+                    # 価格を取得して更新
+                    url_ticker = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_symbol}"
+                    response = requests.get(url_ticker, headers=headers, timeout=10)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        current_price = float(data['price'])
+                        
+                        # 各時間足に最新価格を反映（計算には使わないが、リアルタイム性を確保）
+                        if symbol in self.candle_data_3m and len(self.candle_data_3m[symbol]) > 0:
+                            self.candle_data_3m[symbol][-1]['close'] = current_price
+                        
+                        self.last_price_update[symbol] = current_time_ms
+                        print(f"💹 {symbol}: 価格更新 ${current_price:.2f}")
 
                 # ===== 3分足の更新（3分ごと） =====
                 last_3m = self.last_3m_update.get(symbol, 0)
