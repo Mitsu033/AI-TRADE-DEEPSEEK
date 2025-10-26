@@ -7,6 +7,7 @@ from openai import OpenAI
 from datetime import datetime
 from typing import Dict
 from prompts import SYSTEM_PROMPT, create_trading_prompt, TEMPERATURE, MAX_TOKENS
+from time_utils import now_jst
 
 # .envファイルから環境変数を読み込む
 try:
@@ -67,7 +68,7 @@ class QWEN3API:
         )
 
         # 取引開始時刻と呼び出し回数を追跡
-        self.start_time = datetime.now()
+        self.start_time = now_jst()
         self.invocation_count = 0
         
     def get_trading_decision(self, market_data: Dict, portfolio: Dict, exit_plans: Dict = None) -> Dict:
@@ -130,7 +131,7 @@ class QWEN3API:
                     "success": True,
                     "decision": decision,
                     "reasoning": decision.get("reasoning", ""),
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": now_jst().isoformat()
                 }
 
             except json.JSONDecodeError as e:
@@ -139,7 +140,7 @@ class QWEN3API:
                 return {
                     "success": False,
                     "error": "AIの応答をJSON形式で解析できませんでした",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": now_jst().isoformat()
                 }
 
             except Exception as e:
@@ -153,7 +154,7 @@ class QWEN3API:
                         "success": False,
                         "error": "RateLimitError: API制限に達しました。次のサイクルで再試行します。",
                         "error_type": "rate_limit",
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": now_jst().isoformat()
                     }
 
                 # その他のエラーはリトライ
@@ -167,7 +168,7 @@ class QWEN3API:
                 return {
                     "success": False,
                     "error": f"{error_type}: {str(e)}",
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": now_jst().isoformat()
                 }
 
         # リトライループを抜けた場合（全てのリトライが失敗）
