@@ -278,6 +278,16 @@ MODULE 3 - CONFLUENCE INDICATORS:"""
                 prompt += f"""
     - RSI (14-period): {rsi_14:.2f}"""
 
+        # MODULE 4: Risk Management Data
+        atr_14_4h = data.get('atr_14_4h')
+        if atr_14_4h is not None:
+            prompt += f"""
+
+MODULE 4 - RISK MANAGEMENT DATA:
+  Volatility (4h ATR): ${atr_14_4h:.2f}
+  Recommended Position Size: Based on ATR and account risk
+  Note: RRR >= 2.0 is MANDATORY for any new position"""
+
         prompt += "\n"
 
         # Open Interest と Funding Rate
@@ -393,9 +403,35 @@ Initial Balance: {initial_balance:.2f}
     else:
         prompt += "\nNo open positions currently.\n"
 
-    # 取引判断の指示
+    # MODULE 5: Behavioral Constraints Check
     prompt += """
 
+═══════════════════════════════════════════════════════════════════
+MODULE 5 - BEHAVIORAL CONSTRAINT CHECKLIST
+═══════════════════════════════════════════════════════════════════
+
+MANDATORY CHECKS before entering any new position:
+1. NO CHASING: Price has not moved > 2% from ideal entry point
+2. NO WIDENING STOPS: Never widen a stop-loss once set
+3. OBJECTIVITY: Ignore external news, social media, analyst opinions
+4. DISCIPLINE: Follow the system rules strictly - no exceptions
+
+Current Account Risk Status:
+"""
+
+    # 現在の資金使用状況を計算
+    positions_value = portfolio.get('positions_value', 0)
+    total_value = portfolio.get('total_value', initial_balance)
+    capital_usage = (positions_value / total_value * 100) if total_value > 0 else 0
+
+    prompt += f"""  - Capital Usage: {capital_usage:.1f}%
+  - Available Cash: ${cash:.2f}
+  - Current Drawdown: {((total_value - initial_balance) / initial_balance * 100):.2f}%
+
+"""
+
+    # 取引判断の指示
+    prompt += """
 ═══════════════════════════════════════════════════════════════════
 EXECUTE YOUR SYSTEMATIC TRADING DECISION
 ═══════════════════════════════════════════════════════════════════

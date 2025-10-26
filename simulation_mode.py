@@ -328,6 +328,8 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 更新管理
         self.update_interval = 180  # 3分 = 180秒
         self.last_candle_update = {}
+        self.last_1h_update = {}  # 1時間足の最終更新時刻
+        self.last_4h_update = {}  # 4時間足の最終更新時刻
         self.is_initialized = False
         self.update_thread = None
         self.running = False
@@ -458,6 +460,11 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                             data_count = len(klines)
                             ma200_ready = "✅" if data_count >= 200 else f"⏳ (あと{200-data_count}本)"
                             print(f"✅ {symbol}: 4時間足{data_count}本取得 | 200MA計算: {ma200_ready}")
+
+                            # 最後のキャンドルのタイムスタンプを記録
+                            if klines:
+                                self.last_4h_update[symbol] = klines[-1][0]  # タイムスタンプ
+
                             break
 
                         elif response.status_code == 418:
@@ -523,6 +530,11 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
                             data_count = len(klines)
                             print(f"✅ {symbol}: 1時間足{data_count}本取得")
+
+                            # 最後のキャンドルのタイムスタンプを記録
+                            if klines:
+                                self.last_1h_update[symbol] = klines[-1][0]  # タイムスタンプ
+
                             break
 
                         elif response.status_code == 418:
@@ -562,24 +574,25 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         self.update_thread.start()
 
     def _update_candles(self):
-        """新しいキャンドルデータを取得して追加"""
+        """新しいキャンドルデータを取得して追加（3分足、1時間足、4時間足）"""
+        current_time_ms = int(time.time() * 1000)
+
         for symbol in self.symbols:
             try:
                 binance_symbol = f"{symbol}USDT"
-                # 最新のキャンドル1本を取得
                 url = f"https://api.binance.com/api/v3/klines"
-                params = {
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                # ===== 3分足の更新（毎回） =====
+                params_3m = {
                     'symbol': binance_symbol,
                     'interval': '3m',
                     'limit': 1
                 }
 
-                # User-Agentヘッダーを追加
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-
-                response = requests.get(url, params=params, headers=headers, timeout=10)
+                response = requests.get(url, params=params_3m, headers=headers, timeout=10)
 
                 if response.status_code == 200:
                     klines = response.json()
@@ -594,19 +607,91 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                             'volume': float(kline[5])
                         }
 
-                        # 新しいキャンドルを追加
                         self.candle_data[symbol].append(candle)
 
-                        # 最大600本を保持（200MA計算 + 余裕）
-                        # 600本 = 30時間分のデータ
+                        # 最大600本を保持
                         if len(self.candle_data[symbol]) > 600:
                             self.candle_data[symbol].pop(0)
 
-                        print(f"🔄 {symbol}: 新しいキャンドルを追加 (価格: ${candle['close']:.2f}, 保持: {len(self.candle_data[symbol])}本)")
-                elif response.status_code == 418:
-                    print(f"⚠️ {symbol}: レート制限 (418) - 更新をスキップ")
+                        print(f"🔄 {symbol}: 3分足更新 (${candle['close']:.2f}, 保持: {len(self.candle_data[symbol])}本)")
 
-                # レート制限を避けるために待機（0.1秒 → 1.5秒に延長）
+                # ===== 1時間足の更新（1時間ごと） =====
+                last_1h = self.last_1h_update.get(symbol, 0)
+                time_since_1h = (current_time_ms - last_1h) / 1000  # 秒に変換
+
+                if time_since_1h >= 3600:  # 1時間以上経過
+                    params_1h = {
+                        'symbol': binance_symbol,
+                        'interval': '1h',
+                        'limit': 1
+                    }
+
+                    response = requests.get(url, params=params_1h, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        klines = response.json()
+                        if klines:
+                            kline = klines[0]
+                            candle_1h = {
+                                'timestamp': kline[0],
+                                'open': float(kline[1]),
+                                'high': float(kline[2]),
+                                'low': float(kline[3]),
+                                'close': float(kline[4]),
+                                'volume': float(kline[5])
+                            }
+
+                            # 重複チェック（タイムスタンプが異なる場合のみ追加）
+                            if not self.candle_data_1h[symbol] or \
+                               candle_1h['timestamp'] != self.candle_data_1h[symbol][-1]['timestamp']:
+                                self.candle_data_1h[symbol].append(candle_1h)
+                                self.last_1h_update[symbol] = kline[0]
+
+                                # 最大150本を保持
+                                if len(self.candle_data_1h[symbol]) > 150:
+                                    self.candle_data_1h[symbol].pop(0)
+
+                                print(f"🕐 {symbol}: 1時間足更新 (${candle_1h['close']:.2f}, 保持: {len(self.candle_data_1h[symbol])}本)")
+
+                # ===== 4時間足の更新（4時間ごと） =====
+                last_4h = self.last_4h_update.get(symbol, 0)
+                time_since_4h = (current_time_ms - last_4h) / 1000  # 秒に変換
+
+                if time_since_4h >= 14400:  # 4時間以上経過
+                    params_4h = {
+                        'symbol': binance_symbol,
+                        'interval': '4h',
+                        'limit': 1
+                    }
+
+                    response = requests.get(url, params=params_4h, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        klines = response.json()
+                        if klines:
+                            kline = klines[0]
+                            candle_4h = {
+                                'timestamp': kline[0],
+                                'open': float(kline[1]),
+                                'high': float(kline[2]),
+                                'low': float(kline[3]),
+                                'close': float(kline[4]),
+                                'volume': float(kline[5])
+                            }
+
+                            # 重複チェック
+                            if not self.candle_data_4h[symbol] or \
+                               candle_4h['timestamp'] != self.candle_data_4h[symbol][-1]['timestamp']:
+                                self.candle_data_4h[symbol].append(candle_4h)
+                                self.last_4h_update[symbol] = kline[0]
+
+                                # 最大300本を保持
+                                if len(self.candle_data_4h[symbol]) > 300:
+                                    self.candle_data_4h[symbol].pop(0)
+
+                                print(f"🕓 {symbol}: 4時間足更新 (${candle_4h['close']:.2f}, 保持: {len(self.candle_data_4h[symbol])}本)")
+
+                # レート制限を避けるために待機
                 time.sleep(1.5)
 
             except Exception as e:
