@@ -325,8 +325,12 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 15分足キャンドルデータの保存（エントリータイミング判定用）
         self.candle_data_15m = {symbol: [] for symbol in symbols}
 
-        # 更新管理（15分足が最短時間軸のため15分間隔で更新）
-        self.update_interval = 900  # 15分 = 900秒
+        # 3分足キャンドルデータの保存（短期トレンド判定用）
+        self.candle_data_3m = {symbol: [] for symbol in symbols}
+
+        # 更新管理（3分足が最短時間軸のため3分間隔で更新）
+        self.update_interval = 180  # 3分 = 180秒
+        self.last_3m_update = {}  # 3分足の最終更新時刻
         self.last_15m_update = {}  # 15分足の最終更新時刻
         self.last_1h_update = {}  # 1時間足の最終更新時刻
         self.last_4h_update = {}  # 4時間足の最終更新時刻
@@ -345,6 +349,10 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         # 15分足データを取得
         print("📊 15分足データを取得中（エントリータイミング判定用）...")
         self._fetch_15m_initial_data()
+
+        # 3分足データを取得
+        print("📊 3分足データを取得中（短期トレンド判定用）...")
+        self._fetch_3m_initial_data()
 
         # 全データ初期化完了
         self.is_initialized = True
@@ -564,6 +572,76 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
 
         print("✅ 15分足データ取得完了\n")
 
+    def _fetch_3m_initial_data(self):
+        """
+        3分足キャンドルデータを取得（短期トレンド判定用）
+        EMA 20、MACD、RSIを計算するために50本の3分足を取得
+        """
+        for symbol in self.symbols:
+            try:
+                binance_symbol = f"{symbol}USDT"
+                # 過去50本の3分足キャンドルを取得（2.5時間分）
+                url = f"https://api.binance.com/api/v3/klines"
+                params = {
+                    'symbol': binance_symbol,
+                    'interval': '3m',  # 3分足
+                    'limit': 50  # EMA 20計算に十分
+                }
+
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+
+                        if response.status_code == 200:
+                            klines = response.json()
+
+                            # キャンドルデータを保存
+                            for kline in klines:
+                                candle = {
+                                    'timestamp': kline[0],
+                                    'open': float(kline[1]),
+                                    'high': float(kline[2]),
+                                    'low': float(kline[3]),
+                                    'close': float(kline[4]),
+                                    'volume': float(kline[5])
+                                }
+                                self.candle_data_3m[symbol].append(candle)
+
+                            data_count = len(klines)
+                            print(f"✅ {symbol}: 3分足{data_count}本取得")
+
+                            # 最後のキャンドルのタイムスタンプを記録
+                            if klines:
+                                self.last_3m_update[symbol] = klines[-1][0]  # タイムスタンプ
+
+                            break
+
+                        elif response.status_code == 418:
+                            wait_time = (2 ** attempt) * 2
+                            print(f"⚠️ {symbol}: レート制限 (418) - {wait_time}秒後に再試行")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"⚠️ {symbol}: 3分足データ取得失敗 (status: {response.status_code})")
+                            break
+
+                    except requests.exceptions.RequestException as e:
+                        print(f"⚠️ {symbol}: リクエストエラー - {e}")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+
+                # API制限を避けるために待機
+                time.sleep(1.5)
+
+            except Exception as e:
+                print(f"❌ {symbol}の3分足データ取得エラー: {e}")
+
+        print("✅ 3分足データ取得完了\n")
+
     def _start_background_update(self):
         """バックグラウンドで定期的に新しいキャンドルデータを取得"""
         self.running = True
@@ -580,7 +658,7 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
         self.update_thread.start()
 
     def _update_candles(self):
-        """新しいキャンドルデータを取得して追加（15分足、1時間足、4時間足）"""
+        """新しいキャンドルデータを取得して追加（3分足、15分足、1時間足、4時間足）"""
         current_time_ms = int(time.time() * 1000)
 
         for symbol in self.symbols:
@@ -590,6 +668,44 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
+
+                # ===== 3分足の更新（3分ごと） =====
+                last_3m = self.last_3m_update.get(symbol, 0)
+                time_since_3m = (current_time_ms - last_3m) / 1000  # 秒に変換
+
+                if time_since_3m >= 180:  # 3分以上経過
+                    params_3m = {
+                        'symbol': binance_symbol,
+                        'interval': '3m',
+                        'limit': 1
+                    }
+
+                    response = requests.get(url, params=params_3m, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        klines = response.json()
+                        if klines:
+                            kline = klines[0]
+                            candle_3m = {
+                                'timestamp': kline[0],
+                                'open': float(kline[1]),
+                                'high': float(kline[2]),
+                                'low': float(kline[3]),
+                                'close': float(kline[4]),
+                                'volume': float(kline[5])
+                            }
+
+                            # 重複チェック
+                            if not self.candle_data_3m[symbol] or \
+                               candle_3m['timestamp'] != self.candle_data_3m[symbol][-1]['timestamp']:
+                                self.candle_data_3m[symbol].append(candle_3m)
+                                self.last_3m_update[symbol] = kline[0]
+
+                                # 最大80本を保持
+                                if len(self.candle_data_3m[symbol]) > 80:
+                                    self.candle_data_3m[symbol].pop(0)
+
+                                print(f"⏱️ {symbol}: 3分足更新 (${candle_3m['close']:.2f}, 保持: {len(self.candle_data_3m[symbol])}本)")
 
                 # ===== 1時間足の更新（1時間ごと） =====
                 last_1h = self.last_1h_update.get(symbol, 0)
@@ -839,6 +955,42 @@ class MarketDataFetcherEnhanced(MarketDataFetcher):
             result['ema_20_1h'] = None
             result['ema_50_1h'] = None
             result['trend_1h'] = 'CALCULATING'
+
+        # 3分足コンテキスト（短期トレンド判定用）
+        if symbol in self.candle_data_3m and len(self.candle_data_3m[symbol]) >= 20:
+            candles_3m = self.candle_data_3m[symbol]
+            closes_3m = [c['close'] for c in candles_3m]
+
+            # EMA 20を計算（短期トレンド用）
+            result['ema_20_3m'] = self.indicators.calculate_ema(closes_3m, 20)
+
+            # MACD (3分足) - 超短期シグナル検出用
+            result['macd_3m'] = self.indicators.calculate_macd(closes_3m)
+
+            # RSI 7 (3分足) - 超短期過熱感チェック
+            result['rsi_7_3m'] = self.indicators.calculate_rsi(closes_3m, 7)
+
+            # 3分足のモメンタム判定
+            macd_3m = result['macd_3m']
+
+            if macd_3m and macd_3m.get('macd') is not None:
+                macd_val = macd_3m['macd']
+                signal_val = macd_3m.get('signal', 0)
+
+                if macd_val > signal_val:
+                    result['momentum_3m'] = 'BULLISH'
+                elif macd_val < signal_val:
+                    result['momentum_3m'] = 'BEARISH'
+                else:
+                    result['momentum_3m'] = 'NEUTRAL'
+            else:
+                result['momentum_3m'] = 'CALCULATING'
+        else:
+            # 3分足データが不足
+            result['ema_20_3m'] = None
+            result['rsi_7_3m'] = None
+            result['macd_3m'] = None
+            result['momentum_3m'] = 'CALCULATING'
 
         # 15分足コンテキスト（エントリータイミング判定用）
         if symbol in self.candle_data_15m and len(self.candle_data_15m[symbol]) >= 20:

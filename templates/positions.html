@@ -4,15 +4,60 @@
 
 {% block content %}
 <div class="positions-page">
-    <h1 class="page-title">現在のポジション</h1>
+    <h1 class="page-title">アクティブポジション</h1>
     
-    <div class="positions-summary">
-        <div class="summary-item">
-            <span class="summary-label">総ポジション価値:</span>
-            <span class="summary-value" id="total-positions-value">$0.00</span>
+    <!-- Summary Stats -->
+    <div class="stats-grid" id="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">総損益:</div>
+            <div class="stat-value" id="total-pnl">$0.00</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">手数料合計:</div>
+            <div class="stat-value" id="total-fees">$0.00</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">実現損益:</div>
+            <div class="stat-value" id="net-realized">$0.00</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">平均レバレッジ:</div>
+            <div class="stat-value" id="avg-leverage">0.0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">平均信頼度:</div>
+            <div class="stat-value" id="avg-confidence">0%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">最大勝利:</div>
+            <div class="stat-value positive" id="biggest-win">$0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">最大損失:</div>
+            <div class="stat-value negative" id="biggest-loss">$0</div>
+        </div>
+    </div>
+
+    <!-- Hold Times -->
+    <div class="hold-times" id="hold-times" style="display: none;">
+        <h3>保有時間分布</h3>
+        <div class="hold-times-grid">
+            <div class="hold-time-item">
+                <div class="hold-time-label">ロング:</div>
+                <div class="hold-time-value" id="long-hold">0%</div>
+            </div>
+            <div class="hold-time-item">
+                <div class="hold-time-label">ショート:</div>
+                <div class="hold-time-value" id="short-hold">0%</div>
+            </div>
+            <div class="hold-time-item">
+                <div class="hold-time-label">フラット:</div>
+                <div class="hold-time-value" id="flat-hold">0%</div>
+            </div>
         </div>
     </div>
     
+    <!-- Positions -->
     <div class="positions-container" id="positions-container">
         <div class="loading">ポジションデータを読み込み中...</div>
     </div>
@@ -82,7 +127,6 @@
                 console.error('Positions error:', data.error);
                 const container = document.getElementById('positions-container');
 
-                // データ初期化中の場合は特別なメッセージを表示
                 if (data.status === 'initializing') {
                     container.innerHTML = `<div class="loading" style="color: #00aaff; padding: 20px; text-align: center;">
                         ${data.error}<br>
@@ -97,67 +141,62 @@
                 return;
             }
 
+            // Update stats
+            if (data.total_pnl !== undefined) document.getElementById('total-pnl').textContent = `$${data.total_pnl.toFixed(2)}`;
+            if (data.total_fees !== undefined) document.getElementById('total-fees').textContent = `$${data.total_fees.toFixed(2)}`;
+            if (data.net_realized !== undefined) document.getElementById('net-realized').textContent = `$${data.net_realized.toFixed(2)}`;
+            if (data.average_leverage !== undefined) document.getElementById('avg-leverage').textContent = `${data.average_leverage.toFixed(1)}`;
+            if (data.average_confidence !== undefined) document.getElementById('avg-confidence').textContent = `${data.average_confidence.toFixed(0)}%`;
+            if (data.biggest_win !== undefined) document.getElementById('biggest-win').textContent = `$${data.biggest_win.toFixed(0)}`;
+            if (data.biggest_loss !== undefined) document.getElementById('biggest-loss').textContent = `$${data.biggest_loss.toFixed(2)}`;
+
+            // Update hold times if available
+            if (data.hold_times) {
+                document.getElementById('long-hold').textContent = `${(data.hold_times.long || 0).toFixed(1)}%`;
+                document.getElementById('short-hold').textContent = `${(data.hold_times.short || 0).toFixed(1)}%`;
+                document.getElementById('flat-hold').textContent = `${(data.hold_times.flat || 0).toFixed(1)}%`;
+                document.getElementById('hold-times').style.display = 'block';
+            }
+
             const container = document.getElementById('positions-container');
             container.innerHTML = '';
 
             if (!data.positions || data.positions.length === 0) {
                 container.innerHTML = '<div class="no-data">現在ポジションはありません</div>';
-                document.getElementById('total-positions-value').textContent = '$0.00';
                 return;
             }
 
-            let totalValue = 0;
+            // Total Unrealized P&L
+            const totalUnrealizedPnl = data.total_unrealized_pnl || 0;
+            let positionsHtml = `<div style="margin-bottom: 20px; padding: 15px; background: rgba(0,170,255,0.1); border-radius: 8px;">
+                <strong>総含み損益: $${totalUnrealizedPnl.toFixed(0)}</strong>
+            </div>`;
 
-            // forEach は async/await をサポートしないので for...of を使用
             for (const pos of data.positions) {
-                totalValue += pos.value;
-
                 const pnlClass = pos.pnl > 0 ? 'positive' : pos.pnl < 0 ? 'negative' : '';
 
-                const posCard = document.createElement('div');
-                posCard.className = 'position-card';
-                posCard.innerHTML = `
-                    <div class="position-header">
-                        <h3 class="position-symbol">${pos.symbol}</h3>
-                        <span class="position-leverage">${pos.leverage}x</span>
+                positionsHtml += `
+                <div class="position-card" style="margin-bottom: 15px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h2 style="margin: 0; color: #00aaff;">${pos.symbol}</h2>
                     </div>
-                    <div class="position-details">
-                        <div class="detail-row">
-                            <span class="detail-label">数量:</span>
-                            <span class="detail-value">${pos.quantity.toFixed(6)}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">平均取得価格:</span>
-                            <span class="detail-value">$${pos.avg_price.toFixed(2)}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">現在価格:</span>
-                            <span class="detail-value">$${pos.current_price.toFixed(2)}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">ポジション価値:</span>
-                            <span class="detail-value">$${pos.value.toFixed(2)}</span>
-                        </div>
-                        <div class="detail-row highlight">
-                            <span class="detail-label">含み損益:</span>
-                            <span class="detail-value ${pnlClass}">
-                                $${pos.pnl >= 0 ? '+' : ''}${pos.pnl.toFixed(2)}
-                                (${pos.pnl_percentage >= 0 ? '+' : ''}${pos.pnl_percentage.toFixed(2)}%)
-                            </span>
-                        </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
+                        <div>エントリー時刻: ${pos.entry_time || 'N/A'}</div>
+                        <div>エントリー価格: $${pos.avg_price.toFixed(2)}</div>
+                        <div>サイド: ${pos.side || 'ロング'}</div>
+                        <div>数量: ${pos.quantity.toFixed(2)}</div>
+                        <div>レバレッジ: ${pos.leverage}倍</div>
+                        <div>強制決済価格: $${(pos.liquidation_price || pos.avg_price * 0.9).toFixed(2)}</div>
+                        <div>証拠金: $${pos.margin.toFixed(2)}</div>
+                        <div class="${pnlClass}">含み損益: $${pos.pnl.toFixed(2)}</div>
                     </div>
-                `;
-
-                // Exit Plan情報を追加
-                const exitPlanHtml = await getExitPlanHtml(pos.symbol, pos.current_price);
-                if (exitPlanHtml) {
-                    posCard.innerHTML += exitPlanHtml;
-                }
-
-                container.appendChild(posCard);
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div style="font-size: 0.85em; color: #00aaff;">エグジットプラン: <button onclick="viewExitPlan('${pos.symbol}')" style="background: none; border: 1px solid #00aaff; color: #00aaff; padding: 5px 10px; border-radius: 4px; cursor: pointer;">表示</button></div>
+                    </div>
+                </div>`;
             }
-            
-            document.getElementById('total-positions-value').textContent = `$${totalValue.toFixed(2)}`;
+
+            container.innerHTML = positionsHtml;
             document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString('ja-JP');
             
         } catch (error) {
@@ -168,6 +207,10 @@
                 <small>サーバーが起動しているか確認してください</small>
             </div>`;
         }
+    }
+
+    function viewExitPlan(symbol) {
+        alert(`Exit Plan for ${symbol} - Feature coming soon`);
     }
     
     updatePositions();

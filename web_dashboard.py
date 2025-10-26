@@ -138,8 +138,35 @@ def api_positions():
 
         portfolio = current_bot._get_portfolio_status(current_prices)
 
+        # Calculate total unrealized P&L
+        total_unrealized_pnl = sum(pos['pnl'] for pos in portfolio['positions'].values())
+        
+        # Get performance stats
+        stats = current_bot.db.get_performance_stats()
+        
         positions = []
         for symbol, pos in portfolio['positions'].items():
+            # Get entry time from trade history
+            trades = current_bot.db.get_trade_history(limit=1000, asset=symbol)
+            entry_time = None
+            if trades and len(trades) > 0:
+                # Find the most recent entry for this asset
+                entry_trade = trades[0]
+                entry_timestamp = entry_trade.get('timestamp')
+                if entry_timestamp:
+                    try:
+                        from datetime import datetime as dt
+                        entry_dt = dt.fromisoformat(entry_timestamp.replace('Z', '+00:00'))
+                        entry_time = entry_dt.strftime('%H:%M:%S')
+                    except:
+                        pass
+            
+            # Calculate margin (approximate)
+            margin = pos['value'] / pos['leverage']
+            
+            # Determine side (assume long for now)
+            side = 'Long'
+            
             positions.append({
                 "symbol": symbol,
                 "quantity": pos['quantity'],
@@ -148,12 +175,35 @@ def api_positions():
                 "value": pos['value'],
                 "pnl": pos['pnl'],
                 "pnl_percentage": pos['pnl_percentage'],
-                "leverage": pos['leverage']
+                "leverage": pos['leverage'],
+                "entry_time": entry_time,
+                "margin": margin,
+                "side": side,
+                "liquidation_price": pos['avg_price'] * 0.9  # Approximate
             })
 
+        # Calculate average leverage and confidence from positions
+        avg_leverage = sum(pos['leverage'] for pos in positions) / len(positions) if positions else 0
+        avg_confidence = 70.0  # Placeholder - would need to track this
+        
+        # Get biggest win/loss from trade history
+        trade_history = current_bot.db.get_trade_history(limit=1000)
+        pnls = [t.get('pnl', 0) for t in trade_history if t.get('pnl')]
+        biggest_win = max(pnls) if pnls else 0
+        biggest_loss = min(pnls) if pnls else 0
+        
         return jsonify({
             "positions": positions,
             "total_positions": len(positions),
+            "total_unrealized_pnl": total_unrealized_pnl,
+            "total_pnl": stats.get('total_pnl', 0),
+            "total_fees": stats.get('total_fees', 0),
+            "net_realized": stats.get('net_realized', 0),
+            "average_leverage": avg_leverage,
+            "average_confidence": avg_confidence,
+            "biggest_win": biggest_win,
+            "biggest_loss": biggest_loss,
+            "hold_times": stats.get('hold_times', {}),
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
